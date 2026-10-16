@@ -105,6 +105,21 @@ const SCHEMA = `
     data BLOB NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_news_photos ON announcement_photos(announcement_id);
+  CREATE TABLE IF NOT EXISTS officials (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    full_name TEXT NOT NULL,
+    position TEXT NOT NULL,
+    photo BLOB,
+    updated_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS site_content (
+    name TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT,
+    updated_by TEXT
+  );
 `;
 
 // reference numbers so residents can check their request
@@ -124,7 +139,7 @@ const withPhotos = async rows => {
 };
 
 // ---------- Roles ----------
-// admin     = everything + manage accounts
+// admin     = everything + manage accounts + manage officials
 // staff     = read and update messages, post announcements
 // announcer = post announcements only
 const POSITIONS = {
@@ -263,10 +278,9 @@ const app = express();
 app.set('trust proxy', 1);
 // routes that can carry photos read their own larger body; everything else stays small
 const bigBody = req =>
-  (req.method === 'PATCH' && (req.path.startsWith('/api/admin/messages/') || req.path.startsWith('/api/staff/announcements/') || req.path === '/api/staff/profile')) ||
-  (req.method === 'POST' && (req.path === '/api/staff/announcements' || req.path === '/api/messages'));
-app.use((req, res, next) => bigBody(req) ? next() : express.json({ limit: '20kb' })(req, res, next));
-
+  (req.method === 'PATCH' && (req.path.startsWith('/api/admin/messages/') || req.path.startsWith('/api/staff/announcements/') || req.path.startsWith('/api/admin/officials/') || req.path === '/api/staff/profile')) ||
+  (req.method === 'POST' && (req.path === '/api/staff/announcements' || req.path === '/api/admin/officials' || req.path === '/api/messages'));
+app.use((req, res, next) => (bigBody(req) || (req.method === 'PUT' && (req.path === '/api/admin/content' || req.path === '/api/admin/services'))) ? next() : express.json({ limit: '20kb' })(req, res, next));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------- Public ----------
@@ -310,6 +324,35 @@ app.get('/news-photos/:name', h(async (req, res) => {
 app.get('/api/announcements', h(async (req, res) => {
   const rows = await all('SELECT id, title, body, created_at, edited_at, event_date, event_time, event_end, venue FROM announcements ORDER BY id DESC LIMIT 30');
   res.json(await withPhotos(rows));
+}));
+
+// ---------- Barangay officials (public list) ----------
+// the order here is the order shown on the website
+const OFFICIAL_POSITIONS = ['Punong Barangay', 'Barangay Kagawad', 'SK Chairperson', 'Barangay Secretary', 'Barangay Treasurer'];
+const rankOf = p => { const i = OFFICIAL_POSITIONS.indexOf(p); return i < 0 ? 99 : i; };
+
+function readOfficial(body) {
+  const full_name = clean(body?.full_name, 100);
+  const position = body?.position;
+  if (full_name.length < 2) return { error: 'Enter the full name.' };
+  if (!OFFICIAL_POSITIONS.includes(position)) return { error: 'Choose a position.' };
+  return { full_name, position };
+}
+
+app.get('/api/officials', h(async (req, res) => {
+  const rows = await all('SELECT id, full_name, position, updated_at, created_at, (photo IS NOT NULL) AS has_photo FROM officials ORDER BY id');
+  rows.sort((a, b) => rankOf(a.position) - rankOf(b.position) || a.id - b.id);
+  res.set('Cache-Control', 'no-store');
+  res.json(rows.map(r => ({ ...r, has_photo: !!r.has_photo })));
+}));
+
+// public photo (the page adds ?v=updated_at so changes show right away)
+app.get('/official-photos/:name', h(async (req, res) => {
+  const id = parseInt(req.params.name, 10);
+  if (!Number.isInteger(id)) return res.status(404).end();
+  const p = await get('SELECT photo FROM officials WHERE id = ?', [id]);
+  if (!p || !p.photo) return res.status(404).end();
+  sendJpeg(res, p.photo, 'public, max-age=86400');
 }));
 
 app.post('/api/messages', limit(5, 15), express.json({ limit: '9mb' }), h(async (req, res) => {
@@ -392,6 +435,247 @@ app.get('/api/status/:ref/photo/:n', limit(120, 15), h(async (req, res) => {
   const f = await get('SELECT data FROM proof_photos WHERE id = ?', [ids[n].id]);
   if (!f) return res.status(404).end();
   sendJpeg(res, f.data, 'private, no-store');
+}));
+
+// ---------- AI assistant ----------
+
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+let GEMINI_MODEL = 'gemini-3.8-flash';
+async function pickModel() {
+  try {
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=100', {
+      headers: { 'x-goog-api-key': GEMINI_API_KEY },
+      signal: AbortSignal.timeout(10000)
+    });
+    const d = await r.json();
+    const names = (d.models || [])
+      .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+      .map(m => m.name.replace('models/', ''))
+      .filter(n => !/preview|exp|image|tts|live|audio|embedding|thinking|robotics|computer/.test(n));
+    console.log('Models available to your key:', names.join(', '));
+    const pick = names.find(n => /flash-lite/.test(n)) || names.find(n => /flash/.test(n));
+    if (pick) { GEMINI_MODEL = pick; console.log('Chat model selected:', GEMINI_MODEL); }
+  } catch (e) {
+    console.error('Could not list models:', e.name);
+  }
+}
+if (GEMINI_API_KEY) pickModel();
+
+const CHAT_SYSTEM = `You are the virtual assistant on the official website of Barangay Zapatera, Cebu City, Philippines.
+Many residents do not know what to ask or which service they need. Your job is to guide them step by step.
+Answer briefly and in simple, friendly language.
+
+Language rules (very important):
+- Always reply in the same language as the resident's LATEST message. This works for any language: English, Bisaya (Cebuano), Tagalog, or another one.
+- If the resident switches language, switch with them in your very next reply.
+- If the latest message is too short to tell (for example "ok", "oo", a number), keep using the language of their previous messages.
+- Write the SUGGEST options in that same language too.
+- If you draft a message for the resident, write the draft in the language they are using.
+- Keep website names exactly as they appear on the site, for example "Send a message", "Report a concern", "Check your request". You may explain them in the resident's language.
+How to guide:
+- If the resident is vague or unsure, ask ONE short question at a time to find out what they need. Never ask more than one question per reply.
+- When you understand the need, name the right service, then explain what to bring, where to go, and the next step.
+- Match situations to services:
+  * Job application, ID, or general official purpose: Barangay Clearance
+  * Proof that they live in Zapatera: Certificate of Residency
+  * Medical, school, scholarship, or legal assistance for low-income residents: Certificate of Indigency
+  * Starting or renewing a business: Business Clearance
+  * Dispute with a neighbor or family member: Mediation (Katarungang Pambarangay), free
+  * Problem in the community (noise, garbage, broken light, safety): use "Send a message" and choose "Report a concern"
+  * Ideas for the barangay: "Send a message" and choose "Suggestion"
+  * Already sent something: ask them to type their ZAP-XXXXXX reference number here in the chat
+- If the resident wants to send a message, you may help them write it clearly, and remind them to add it in the "Send a message" form.
+
+Facts you may use:
+- Office hours: [Mon to Fri, 8:00 AM to 5:00 PM]
+- Address: [Barangay Hall address]
+- Phone: [number]
+- Fees: [fees]. Bring a valid ID and proof of residency for documents.
+- In a life-threatening emergency, call 911.
+
+Rules:
+- Only use the facts above. If you do not know something (fees, schedules, requirements not listed), say so and tell the resident to contact the Barangay Hall.
+- Never promise approval, processing times, or exceptions.
+- Do not ask for or accept IDs, passwords, or other private information.
+- You cannot file requests. If the resident wants to check a request, ask them to type their reference number (ZAP-XXXXXX) here in the chat. The system will show the status automatically. Do not tell them to go to another section.
+- Stay on barangay topics.
+- Write in plain text only. Never use asterisks, bold, headings, tables, or lines made of dashes.
+- Use a professional, courteous tone, like a barangay front-desk officer. Be clear and direct. Avoid casual filler such as "Don't worry".
+- To list items, put each on its own line starting with "- ".
+- When the resident asks you to draft a message, write it as a short, formal message in plain text. Start with "Subject: ..." on its own line, then the message. Use blanks like "____" for details the resident must fill in, and do not use brackets.
+
+Format: end EVERY reply with one final line in exactly this form, with 2 or 3 short options (under 6 words each), written in the resident's language the way the resident would say them. Keep the word SUGGEST: in English.
+SUGGEST: option one | option two | option three`;
+
+const plain = t => t
+  .replace(/\*\*(.+?)\*\*/g, '$1')
+  .replace(/__(.+?)__/g, '$1')
+  .replace(/^\s*#{1,6}\s*/gm, '')
+  .replace(/^\s*[-*_]{3,}\s*$/gm, '')
+  .replace(/^\s*\*\s+/gm, '- ')
+  .replace(/\*/g, '')
+  .replace(/\n{3,}/g, '\n\n')
+  .trim();
+
+const chatSystem = async () => {
+  const rows = await all('SELECT name, value FROM site_content');
+  const c = {};
+  rows.forEach(r => { c[r.name] = r.value; });
+  let svc = [];
+  try { svc = c.services ? JSON.parse(c.services) : []; } catch {}
+  const svcFacts = svc.map(s => `- Service: ${s.name}. ${s.desc || ''} Bring: ${(s.reqs || []).join(', ') || 'ask the Barangay Hall'}. Fee: ${s.fee || 'ask the Barangay Hall'}`).join('\n');
+  const facts = [
+    (c.days || c.hours) && `- Office hours: ${[c.days, c.hours].filter(Boolean).join(', ')}`,
+    c.address && `- Address: ${c.address}`,
+    c.phone && `- Phone: ${c.phone}`,
+    svcFacts
+  ].filter(Boolean).join('\n');
+  return facts ? CHAT_SYSTEM + '\n\nVerified details from the Barangay Hall (use these instead of any bracketed placeholder above):\n' + facts : CHAT_SYSTEM;
+};
+
+app.post('/api/chat', limit(20, 10), h(async (req, res) => {
+  if (!GEMINI_API_KEY) return res.status(503).json({ error: 'The assistant is not available right now.' });
+
+  const msgs = (Array.isArray(req.body?.messages) ? req.body.messages : [])
+    .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
+    .slice(-6)
+    .map(m => ({ role: m.role, content: m.content.slice(0, 600) }));
+  while (msgs.length && msgs[0].role !== 'user') msgs.shift();
+  if (!msgs.length || msgs[msgs.length - 1].role !== 'user') return res.status(400).json({ error: 'Please type a question.' });
+
+  // Reference numbers are answered from the database, not by the AI
+  const detectLang = t => {
+    const s = ' ' + String(t).toLowerCase().replace(/[^a-zñ\s]/g, ' ').replace(/\s+/g, ' ') + ' ';
+    const count = ws => ws.filter(w => s.includes(' ' + w + ' ')).length;
+    const bis = count(['unsa','asa','naa','wala','dili','pila','palihug','kinahanglan','nako','akong','nimo','imo','ug','og','nga','diay','unsaon','mangayo','tabang','kanus','kini','kana','ra','oo','di','akoa','atoa','kuhaon','gikan']);
+    const tl = count(['ano','saan','paano','magkano','kailan','ako','ang','ng','mga','po','hindi','may','kailangan','namin','paki','nais','para','ito','iyon','yung','naman','nasaan','opo','oo po','gusto ko']);
+    return bis > tl ? 'bis' : tl > bis ? 'tl' : 'en';
+  };
+  const userTexts = msgs.filter(m => m.role === 'user').map(m => m.content).reverse();
+  let lang = detectLang(userTexts[0]);
+  if (lang === 'en' && userTexts[0].trim().split(/\s+/).length < 4) {
+    lang = userTexts.slice(1, 4).map(detectLang).find(l => l !== 'en') || 'en';
+  }
+
+  const T = {
+    en: {
+      ask: 'Please type your reference number here. It looks like ZAP-XXXXXX and was given to you after you sent your message.',
+      nf: r => `I could not find the reference number ${r}. Please check the number and try again.`,
+      head: (r, t) => `Reference ${r} (${t})`, status: 'Status', sent: 'Sent on', upd: 'Last update on',
+      done: 'What was done', photos: 'Proof photos are available under "Check your request" on this website.',
+      labels: { 'new': 'Received', 'in progress': 'In progress', 'resolved': 'Resolved' },
+      notes: { 'new': 'The Barangay Hall has received your message and will review it.', 'in progress': 'The Barangay Hall is working on your request.', 'resolved': 'Your request has been marked as resolved.' },
+      sug: ['Check another request', 'Send a message'], sugNf: ['Check another request', 'Contact the Barangay Hall']
+    },
+    bis: {
+      ask: 'Palihug i-type diri ang imong reference number. Ingon ani kini: ZAP-XXXXXX, ug gihatag kini human nimo napadala ang imong mensahe.',
+      nf: r => `Wala nako makita ang reference number nga ${r}. Palihug susiha ang numero ug sulayi usab.`,
+      head: (r, t) => `Reference ${r} (${t})`, status: 'Kahimtang', sent: 'Gipadala sa', upd: 'Kataposang update sa',
+      done: 'Unsa ang nahimo', photos: 'Anaa ang mga proof photo sa "Check your request" niini nga website.',
+      labels: { 'new': 'Nadawat', 'in progress': 'Gitrabaho pa', 'resolved': 'Nasulbad na' },
+      notes: { 'new': 'Nadawat na sa Barangay Hall ang imong mensahe ug ireview kini.', 'in progress': 'Gitrabaho na sa Barangay Hall ang imong hangyo.', 'resolved': 'Ang imong hangyo gimarkahan na nga nasulbad.' },
+      sug: ['Susiha ang lain nga hangyo', 'Magpadala og mensahe'], sugNf: ['Susiha ang lain nga hangyo', 'Kontaka ang Barangay Hall']
+    },
+    tl: {
+      ask: 'Pakilagay dito ang iyong reference number. Ganito ang itsura nito: ZAP-XXXXXX, at ibinigay ito sa iyo matapos mong ipadala ang mensahe.',
+      nf: r => `Hindi ko mahanap ang reference number na ${r}. Pakisuri ang numero at subukan muli.`,
+      head: (r, t) => `Reference ${r} (${t})`, status: 'Katayuan', sent: 'Ipinadala noong', upd: 'Huling update noong',
+      done: 'Ang ginawa', photos: 'Makikita ang mga proof photo sa "Check your request" sa website na ito.',
+      labels: { 'new': 'Natanggap', 'in progress': 'Ginagawa pa', 'resolved': 'Naresolba na' },
+      notes: { 'new': 'Natanggap na ng Barangay Hall ang iyong mensahe at susuriin ito.', 'in progress': 'Ginagawa na ng Barangay Hall ang iyong kahilingan.', 'resolved': 'Namarkahan na bilang naresolba ang iyong kahilingan.' },
+      sug: ['Suriin ang ibang request', 'Magpadala ng mensahe'], sugNf: ['Suriin ang ibang request', 'Kontakin ang Barangay Hall']
+    }
+  };
+  const L = T[lang];
+
+  const lastText = msgs[msgs.length - 1].content.trim();
+  const refMatch = lastText.match(/ZAP-[A-Z0-9]{6}/i);
+
+  if (/^(check (my )?request|check request status|enter my reference number)$/i.test(lastText)) {
+    return res.json({ reply: L.ask, suggestions: [] });
+  }
+
+  if (refMatch) {
+    const ref = refMatch[0].toUpperCase();
+    const m = await get('SELECT id, ref, topic, status, created_at, updated_at FROM messages WHERE ref = ?', [ref]);
+    if (!m) return res.json({ reply: L.nf(ref), suggestions: L.sugNf });
+    const day = s => new Date(String(s).replace(' ', 'T') + 'Z').toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Manila' });
+    let reply = `${L.head(m.ref, m.topic)}\n${L.status}: ${L.labels[m.status] || m.status}\n${L.notes[m.status] || ''}\n${L.sent} ${day(m.created_at)}.`;
+    if (m.updated_at) reply += ` ${L.upd} ${day(m.updated_at)}.`;
+    if (m.status === 'resolved') {
+      const proof = await latestProof(m.id);
+      if (proof && proof.note) reply += `\n\n${L.done}: ${proof.note}`;
+      const cnt = proof ? (await get('SELECT COUNT(*) AS n FROM proof_photos WHERE log_id = ?', [proof.id])).n : 0;
+      if (cnt) reply += `\n\n${L.photos}`;
+    }
+    return res.json({ reply, suggestions: L.sug });
+  }
+
+  if (refMatch) {
+    const ref = refMatch[0].toUpperCase();
+    const m = await get('SELECT id, ref, topic, status, created_at, updated_at FROM messages WHERE ref = ?', [ref]);
+    if (!m) {
+      return res.json({ reply: `I could not find the reference number ${ref}. Please check the number and try again.`, suggestions: ['Check another request', 'Contact the Barangay Hall'] });
+    }
+    const day = s => new Date(String(s).replace(' ', 'T') + 'Z').toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Manila' });
+    const label = { 'new': 'Received', 'in progress': 'In progress', 'resolved': 'Resolved' }[m.status] || m.status;
+    const note = {
+      'new': 'The Barangay Hall has received your message and will review it.',
+      'in progress': 'The Barangay Hall is working on your request.',
+      'resolved': 'Your request has been marked as resolved.'
+    }[m.status] || '';
+    let reply = `Reference ${m.ref} (${m.topic})\nStatus: ${label}\n${note}\nSent on ${day(m.created_at)}.`;
+    if (m.updated_at) reply += ` Last update on ${day(m.updated_at)}.`;
+    if (m.status === 'resolved') {
+      const proof = await latestProof(m.id);
+      if (proof && proof.note) reply += `\n\nWhat was done: ${proof.note}`;
+      const cnt = proof ? (await get('SELECT COUNT(*) AS n FROM proof_photos WHERE log_id = ?', [proof.id])).n : 0;
+      if (cnt) reply += `\n\nProof photos are available under "Check your request" on this website.`;
+    }
+    return res.json({ reply, suggestions: ['Check another request', 'Send a message'] });
+  }
+
+  const sysText = await chatSystem();
+  const callGemini = (genConfig) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: sysText }] },
+      contents: msgs.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+      generationConfig: genConfig
+    }),
+    signal: AbortSignal.timeout(20000)
+  });
+
+  let r, data;
+  try {
+    // first try with low thinking so replies come back fast
+    r = await callGemini({ maxOutputTokens: 350, temperature: 0.3, thinkingConfig: { thinkingLevel: 'minimal' } });    
+    data = await r.json().catch(() => ({}));
+    // if the model rejects that setting, retry once without it
+    if (r.status === 400 && /thinking/i.test(data?.error?.message || '')) {
+    r = await callGemini({ maxOutputTokens: 350, temperature: 0.3 });
+      data = await r.json().catch(() => ({}));
+    }
+  } catch (e) {
+    console.error('Chat API timeout or network error:', e.name);
+    return res.status(504).json({ error: 'The assistant is taking too long. Please try again.' });
+  }
+
+  if (!r.ok) {
+    console.error('Chat API error', r.status, data?.error?.message || '');
+    return res.status(502).json({ error: 'The assistant is busy. Please try again in a moment.' });
+  }
+
+  let reply = (data.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('\n').trim();
+  let suggestions = [];
+  const sm = reply.match(/\n?\s*SUGGEST:\s*(.+)\s*$/i);
+  if (sm) {
+    suggestions = sm[1].split('|').map(s => s.trim()).filter(Boolean).slice(0, 3).map(s => s.slice(0, 60));
+    reply = reply.slice(0, sm.index).trim();
+  }
+  reply = plain(reply);
+  res.json({ reply: reply || 'Sorry, I could not answer that. Please contact the Barangay Hall.', suggestions });
 }));
 
 // ---------- Sign in / out ----------
@@ -613,6 +897,45 @@ app.delete('/api/staff/announcements/:id', auth, ready, h(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// ---------- Barangay officials (admin only) ----------
+app.post('/api/admin/officials', auth, ready, can('admin'), express.json({ limit: '2mb' }), h(async (req, res) => {
+  const f = readOfficial(req.body);
+  if (f.error) return res.status(400).json({ error: f.error });
+  let photo = null;
+  if (req.body?.photo) {
+    const ph = readPhotos([req.body.photo]);
+    if (ph.error) return res.status(400).json({ error: ph.error });
+    photo = ph.bufs[0];
+  }
+  await run('INSERT INTO officials (full_name, position, photo) VALUES (?, ?, ?)', [f.full_name, f.position, photo]);
+  res.status(201).json({ ok: true });
+}));
+
+app.patch('/api/admin/officials/:id', auth, ready, can('admin'), express.json({ limit: '2mb' }), h(async (req, res) => {
+  const id = idParam(req);
+  if (!(await get('SELECT 1 AS x FROM officials WHERE id = ?', [id]))) return res.status(404).json({ error: 'Official not found.' });
+  const f = readOfficial(req.body);
+  if (f.error) return res.status(400).json({ error: f.error });
+
+  let sql = "UPDATE officials SET full_name = ?, position = ?, updated_at = datetime('now')";
+  const args = [f.full_name, f.position];
+  if (req.body?.photo) {
+    const ph = readPhotos([req.body.photo]);
+    if (ph.error) return res.status(400).json({ error: ph.error });
+    sql += ', photo = ?'; args.push(ph.bufs[0]);
+  } else if (req.body?.remove_photo) {
+    sql += ', photo = NULL';
+  }
+  sql += ' WHERE id = ?'; args.push(id);
+  await run(sql, args);
+  res.json({ ok: true });
+}));
+
+app.delete('/api/admin/officials/:id', auth, ready, can('admin'), h(async (req, res) => {
+  await run('DELETE FROM officials WHERE id = ?', [idParam(req)]);
+  res.json({ ok: true });
+}));
+
 // ---------- Accounts (admin only) ----------
 app.get('/api/admin/users', auth, ready, can('admin'), h(async (req, res) => {
   res.json(await all('SELECT id, username, full_name, position, role, active, must_change, created_at, email, phone, updated_at, (avatar IS NOT NULL) AS has_avatar FROM users ORDER BY id'));
@@ -682,6 +1005,136 @@ app.patch('/api/admin/users/:id', auth, ready, can('admin'), h(async (req, res) 
   }
 
   res.status(400).json({ error: 'Nothing to update.' });
+}));
+
+// ---------- Editable landing page text (admin and secretary) ----------
+const CONTENT = [
+  { key: 'hero_title', group: 'Top of the page', label: 'Main headline', max: 150, def: 'Reliable barangay service for every Zapatera resident.' },
+  { key: 'hero_text', group: 'Top of the page', label: 'Short intro under the headline', max: 300, multi: true, def: 'Request documents, read official announcements, and reach the Barangay Hall quickly and clearly.' },
+  { key: 'days', group: 'Hall hours and contact details', label: 'Days open', max: 60, def: 'Mon to Fri' },
+  { key: 'hours', group: 'Hall hours and contact details', label: 'Office hours', max: 60, def: '8:00 AM to 5:00 PM' },
+  { key: 'address', group: 'Hall hours and contact details', label: 'Barangay Hall address', max: 200, def: 'Barangay Hall, Zapatera, Cebu City' },
+  { key: 'phone', group: 'Hall hours and contact details', label: 'Phone number', max: 40, def: '' },
+  { key: 'email', group: 'Hall hours and contact details', label: 'Email address', max: 120, def: '' },
+  { key: 'facebook', group: 'Hall hours and contact details', label: 'Facebook page', max: 200, def: '' },
+  { key: 'about_text', group: 'About Barangay Zapatera', label: 'About (2 to 3 sentences)', max: 800, multi: true, def: '' },
+  { key: 'mission', group: 'About Barangay Zapatera', label: 'Mission', max: 500, multi: true, def: '' },
+  { key: 'vision', group: 'About Barangay Zapatera', label: 'Vision', max: 500, multi: true, def: '' },
+  { key: 'hot_hall', group: 'Emergency hotlines', label: 'Barangay Hall', max: 40, def: '' },
+  { key: 'hot_tanod', group: 'Emergency hotlines', label: 'Barangay Tanod', max: 40, def: '' },
+  { key: 'hot_health', group: 'Emergency hotlines', label: 'Health Center', max: 40, def: '' }
+];
+const CONTENT_KEYS = new Map(CONTENT.map(f => [f.key, f]));
+
+// public: the saved text (the landing page uses this)
+app.get('/api/content', h(async (req, res) => {
+  const rows = await all('SELECT name, value FROM site_content');
+  const o = {};
+  rows.forEach(r => { o[r.name] = r.value; });
+  res.set('Cache-Control', 'no-store');
+  res.json(o);
+}));
+
+// editor: fields and current values
+app.get('/api/admin/content', auth, ready, can('admin'), h(async (req, res) => {
+  const rows = await all('SELECT name, value FROM site_content');
+  const saved = {};
+  rows.forEach(r => { saved[r.name] = r.value; });
+  res.json(CONTENT.map(f => ({ ...f, value: saved[f.key] || '' })));
+}));
+
+// editor: save (an empty field goes back to the placeholder)
+app.put('/api/admin/content', auth, ready, can('admin'), express.json({ limit: '100kb' }), h(async (req, res) => {
+  const vals = req.body?.values;
+  if (!vals || typeof vals !== 'object') return res.status(400).json({ error: 'Nothing to save.' });
+  const stmts = [];
+  for (const [k, v] of Object.entries(vals)) {
+    const f = CONTENT_KEYS.get(k);
+    if (!f) continue;
+    const text = clean(v, f.max);
+    if (!text) stmts.push({ sql: 'DELETE FROM site_content WHERE name = ?', args: [k] });
+    else stmts.push({
+      sql: "INSERT INTO site_content (name, value, updated_at, updated_by) VALUES (?, ?, datetime('now'), ?) ON CONFLICT(name) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, updated_by = excluded.updated_by",
+      args: [k, text, req.user.full_name]
+    });
+  }
+  if (stmts.length) await client.batch(stmts, 'write');
+  res.json({ ok: true });
+}));
+
+// ---------- Services and "How to request" steps (admin and secretary) ----------
+const SERVICE_ICONS = ['doc', 'home', 'heart', 'biz', 'scale', 'shield'];
+const DEFAULT_SERVICES = [
+  { name: 'Barangay Clearance', desc: 'For employment, IDs, and other official purposes.', reqs: ['Valid ID', 'Proof of residency'], fee: '', icon: 'doc' },
+  { name: 'Certificate of Residency', desc: 'Confirms that you live in Zapatera.', reqs: ['Valid ID with address', 'Proof of residency, if needed'], fee: '', icon: 'home' },
+  { name: 'Certificate of Indigency', desc: 'For medical, school, or legal assistance.', reqs: ['Valid ID', 'Letter from the requesting office'], fee: '', icon: 'heart' },
+  { name: 'Business Clearance', desc: 'Needed before the city issues a business permit.', reqs: ["Owner's valid ID", 'Business name and address'], fee: '', icon: 'biz' },
+  { name: 'Mediation', desc: 'Settle disputes between neighbors before going to court (Katarungang Pambarangay).', reqs: ['Visit the Hall', 'Speak with the Lupon'], fee: 'Free of charge', icon: 'scale' }
+];
+const DEFAULT_STEPS = [
+  { title: 'Prepare requirements', text: 'Bring a valid ID and any supporting papers for your request.' },
+  { title: 'Visit the Hall', text: 'Go to the Barangay Hall during office hours and state your request.' },
+  { title: 'Pay the fee', text: 'Pay the fee, if any, and keep your official receipt.' },
+  { title: 'Claim your document', text: 'Receive your signed document from the Hall.' }
+];
+
+const loadJson = async (name, def) => {
+  const r = await get('SELECT value FROM site_content WHERE name = ?', [name]);
+  if (!r) return def;
+  try { const v = JSON.parse(r.value); return Array.isArray(v) && v.length ? v : def; } catch { return def; }
+};
+const loadServices = async () => ({ services: await loadJson('services', DEFAULT_SERVICES), steps: await loadJson('steps', DEFAULT_STEPS) });
+
+function readServices(raw) {
+  if (!Array.isArray(raw) || raw.length > 12) return { error: 'You can have up to 12 services.' };
+  const list = [];
+  for (const s of raw) {
+    const name = clean(s?.name, 80);
+    if (name.length < 2) return { error: 'Every service needs a name.' };
+    list.push({
+      name, desc: clean(s?.desc, 200), fee: clean(s?.fee, 40),
+      reqs: (Array.isArray(s?.reqs) ? s.reqs : []).map(r => clean(r, 100)).filter(Boolean).slice(0, 8),
+      icon: SERVICE_ICONS.includes(s?.icon) ? s.icon : 'doc'
+    });
+  }
+  return { list };
+}
+function readSteps(raw) {
+  if (!Array.isArray(raw) || raw.length > 8) return { error: 'You can have up to 8 steps.' };
+  const list = [];
+  for (const s of raw) {
+    const title = clean(s?.title, 60);
+    if (title.length < 2) return { error: 'Every step needs a title.' };
+    list.push({ title, text: clean(s?.text, 200) });
+  }
+  return { list };
+}
+
+// public: used by the landing page
+app.get('/api/services', h(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await loadServices());
+}));
+
+// editor: current lists
+app.get('/api/admin/services', auth, ready, can('admin'), h(async (req, res) => {
+  res.json(await loadServices());
+}));
+
+// editor: save (an empty list goes back to the original list)
+app.put('/api/admin/services', auth, ready, can('admin'), express.json({ limit: '100kb' }), h(async (req, res) => {
+  const sv = readServices(req.body?.services), st = readSteps(req.body?.steps);
+  if (sv.error || st.error) return res.status(400).json({ error: sv.error || st.error });
+  const stmts = [];
+  for (const [k, list] of [['services', sv.list], ['steps', st.list]]) {
+    if (!list.length) stmts.push({ sql: 'DELETE FROM site_content WHERE name = ?', args: [k] });
+    else stmts.push({
+      sql: "INSERT INTO site_content (name, value, updated_at, updated_by) VALUES (?, ?, datetime('now'), ?) ON CONFLICT(name) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, updated_by = excluded.updated_by",
+      args: [k, JSON.stringify(list), req.user.full_name]
+    });
+  }
+  await client.batch(stmts, 'write');
+  res.json({ ok: true });
 }));
 
 // ---------- Errors (always answer the site with JSON) ----------

@@ -6,16 +6,30 @@
 <title>Barangay Zapatera | Official Website</title>
 <link rel="icon" href="/seal.png">
 <script>document.documentElement.classList.add("js")</script>
+<script>
+/* theme: apply the saved choice before the page paints (no flash) */
+(function(){
+  var root=document.documentElement;
+  try{var s=localStorage.getItem('theme');if(s==='dark'||s==='light')root.setAttribute('data-theme',s)}catch(e){}
+  window.themeNow=function(){return root.getAttribute('data-theme')||(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')};
+  window.themeSet=function(t){
+    root.setAttribute('data-theme',t);
+    try{localStorage.setItem('theme',t)}catch(e){}
+    document.querySelectorAll('.tsw').forEach(function(b){b.setAttribute('aria-checked',t==='dark'?'true':'false')});
+  };
+})();
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#fff;--alt:#f3f5fa;--surface:#fff;--ink:#141a2b;--muted:#586277;--brand:#241d6b;--link:#241d6b;--accent:#d4231f;--on-brand:#fff;--line:#e0e4ee;--tint:#ebe9fb;--green:#1f9d55;
   --seal:url(/seal.png);
   --head:"Manrope",system-ui,sans-serif;--body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:light;
   box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
 }
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d111f;--alt:#121830;--surface:#171e38;--ink:#eef0f7;--muted:#a1aac2;--brand:#17124a;--link:#aaa5ff;--accent:#ff5d58;--line:#29325a;--tint:#221c5a}}
-:root[data-theme="dark"]{--bg:#0d111f;--alt:#121830;--surface:#171e38;--ink:#eef0f7;--muted:#a1aac2;--brand:#17124a;--link:#aaa5ff;--accent:#ff5d58;--line:#29325a;--tint:#221c5a}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d111f;--alt:#121830;--surface:#171e38;--ink:#eef0f7;--muted:#a1aac2;--brand:#17124a;--link:#aaa5ff;--accent:#ff5d58;--line:#29325a;--tint:#221c5a;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0d111f;--alt:#121830;--surface:#171e38;--ink:#eef0f7;--muted:#a1aac2;--brand:#17124a;--link:#aaa5ff;--accent:#ff5d58;--line:#29325a;--tint:#221c5a;color-scheme:dark}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth;scroll-padding-top:84px}
 body{margin:0;background:var(--bg);color:var(--ink);font:400 1rem/1.7 var(--body);-webkit-font-smoothing:antialiased}
@@ -138,7 +152,8 @@ section{padding:78px 0}
 .feed .dt{color:var(--accent);opacity:1}
 .feed h3{font:600 1rem var(--body);margin-top:2px}
 .chief{display:flex;gap:20px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:24px;margin-bottom:18px}
-.av{border-radius:50%;background:var(--tint);color:var(--link);display:grid;place-items:center;font:800 1.2rem var(--head);flex:none;width:84px;height:84px}
+.av{border-radius:50%;background:var(--tint);color:var(--link);display:grid;place-items:center;font:800 1.2rem var(--head);flex:none;width:84px;height:84px;overflow:hidden}
+.av img{width:100%;height:100%;object-fit:cover;display:block}
 .chief h3{font-size:1.2rem}
 .chief span,.p span{color:var(--muted);font-size:.9rem}
 .team{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
@@ -256,6 +271,37 @@ footer p,footer a{display:block;margin:5px 0;font-size:.9rem;opacity:.85;color:#
 footer a:hover{text-decoration:underline}
 .copy{margin-top:30px;padding-top:18px;border-top:1px solid rgba(255,255,255,.2);font-size:.82rem;opacity:.75}
 
+/* clickable officials + profile pop-up */
+.chief.click,.p.click{cursor:pointer;transition:transform .25s ease,box-shadow .25s ease,border-color .25s ease}
+.chief.click{border-left:5px solid var(--accent)}
+.chief.click:hover,.p.click:hover{transform:translateY(-4px);box-shadow:0 16px 32px rgba(20,26,43,.13);border-color:var(--link)}
+.chief.click:hover{border-left-color:var(--accent)}
+.chief.click::after,.p.click::after{content:"\203A";margin-left:auto;flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--tint);color:var(--link);font:700 1.4rem/1 var(--head);padding-bottom:3px;transition:background .25s,color .25s,transform .25s}
+.chief.click:hover::after,.p.click:hover::after{background:var(--accent);color:#fff;transform:translateX(3px)}
+.p.click::after{width:28px;height:28px;font-size:1.2rem}
+
+#od{border:0;border-radius:22px;padding:0;width:min(440px,calc(100% - 32px));max-height:92vh;overflow:auto;background:var(--surface);color:var(--ink);box-shadow:0 30px 90px rgba(0,0,0,.5)}
+#od[open]{animation:ndIn .35s cubic-bezier(.2,.8,.2,1)}
+#od::backdrop{background:rgba(10,12,30,.72);backdrop-filter:blur(4px)}
+.od-x{position:absolute;top:12px;right:12px;z-index:3;width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.45);background:rgba(15,12,60,.45);backdrop-filter:blur(6px);color:#fff;font-size:1.4rem;line-height:1;cursor:pointer;transition:background .2s,transform .2s}
+.od-x:hover{background:var(--accent);transform:rotate(90deg)}
+.od-cover{position:relative;height:130px;background:linear-gradient(135deg,var(--brand) 0%,#3b30b0 100%);border-bottom:5px solid var(--accent);overflow:hidden}
+.od-cover::before{content:"";position:absolute;right:-50px;top:-60px;width:240px;height:240px;border-radius:50%;background:var(--seal) center/cover;opacity:.16}
+.od-cover span{position:absolute;left:24px;top:18px;color:#fff;font:700 .78rem var(--body);letter-spacing:.1em;text-transform:uppercase;opacity:.85}
+.od-body{padding:0 30px 24px;text-align:center}
+.od-av{width:156px;height:156px;border-radius:50%;margin:-78px auto 0;position:relative;background:var(--tint);color:var(--link);display:grid;place-items:center;font:800 2.8rem var(--head);overflow:hidden;border:5px solid var(--surface);box-shadow:0 0 0 3px var(--accent),0 12px 28px rgba(20,26,43,.28)}
+.od-av img{width:100%;height:100%;object-fit:cover;display:block}
+#od h3{font-size:1.6rem;margin:20px 0 10px}
+.od-pos{display:inline-block;background:var(--accent);color:#fff;font-weight:600;font-size:.85rem;padding:5px 18px;border-radius:99px}
+.od-sec{margin-top:22px;padding-top:18px;border-top:1px solid var(--line);text-align:left}
+.od-sec small{display:block;margin-bottom:6px;font:700 .72rem var(--body);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.od-sec p{margin:0;font-size:.95rem;line-height:1.65}
+.od-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 18px;background:var(--alt);border-top:1px solid var(--line)}
+.od-foot button{border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 .85rem var(--body);padding:8px 16px;border-radius:99px;cursor:pointer;transition:border-color .2s,color .2s}
+.od-foot button:hover{border-color:var(--link);color:var(--link)}
+.od-foot span{color:var(--muted);font-size:.82rem;font-weight:600}
+#od.solo .od-foot{display:none}
+
 /* back to top */
 #up{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom,0px));width:46px;height:46px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;box-shadow:0 8px 20px rgba(0,0,0,.25);opacity:0;transform:translateY(20px);pointer-events:none;transition:opacity .3s ease,transform .3s ease;z-index:30}
 #up.show{opacity:1;transform:none;pointer-events:auto}
@@ -292,6 +338,50 @@ footer a:hover{text-decoration:underline}
 
 #clock{font-variant-numeric:tabular-nums}
 
+/* dark / light switch */
+.tsw{display:inline-flex;align-items:center;gap:9px;background:none;border:0;padding:2px;color:#fff;font:600 .8rem var(--body);cursor:pointer;border-radius:99px}
+.strip .tsw span{opacity:1}
+.tsw .trk{position:relative;flex:none;width:44px;height:24px;border-radius:99px;background:rgba(255,255,255,.28);border:1px solid rgba(255,255,255,.5);transition:background .25s,border-color .25s}
+.tsw .trk::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.35);transition:transform .25s cubic-bezier(.3,1.4,.5,1)}
+.tsw[aria-checked="true"] .trk{background:var(--accent);border-color:var(--accent)}
+.tsw[aria-checked="true"] .trk::after{transform:translateX(20px)}
+@media(max-width:480px){.tsw>span:last-child{display:none}}
+
+/* AI assistant */
+#cwb{position:fixed;left:18px;bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:40;display:flex;align-items:center;gap:8px;min-height:46px;padding:0 18px;border:0;border-radius:99px;background:var(--brand);color:#fff;font:600 .92rem var(--body);cursor:pointer;box-shadow:0 8px 20px rgba(0,0,0,.25)}
+#cwb:hover{filter:brightness(1.15)}
+#cw{position:fixed;left:18px;bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:40;width:min(380px,calc(100% - 36px));height:min(520px,calc(100% - 110px));display:none;flex-direction:column;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.35);overflow:hidden}
+#cw.on{display:flex}
+.cwh{background:var(--brand);color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid var(--accent)}
+.cwh b{font:800 1rem var(--head)}
+.cwh button{background:none;border:0;color:#fff;font-size:1.5rem;line-height:1;cursor:pointer}
+#cwm{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--alt)}
+.cwg{padding:10px 14px;border-radius:14px;max-width:86%;font-size:.93rem;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.cwg.bot{background:var(--surface);border:1px solid var(--line);align-self:flex-start}
+.cwg.me{background:var(--accent);color:#fff;align-self:flex-end}
+#cwc{display:flex;flex-wrap:wrap;gap:8px;padding:10px 12px 4px;background:var(--surface);border-top:1px solid var(--line)}
+#cwc:empty{display:none}
+#cwc button{padding:7px 13px;border:1px solid var(--accent);border-radius:99px;background:transparent;color:var(--accent);font:600 .82rem var(--body);cursor:pointer;text-align:left}
+#cwc button:hover{background:var(--accent);color:#fff}
+.cwf{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);background:var(--surface)}
+.cwf input{flex:1;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font:400 .95rem var(--body)}
+.cwf button{padding:0 16px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-weight:600;cursor:pointer}
+.cwf button:disabled{opacity:.6}
+.cwn{font-size:.72rem;color:var(--muted);text-align:center;padding:0 10px 8px;background:var(--surface)}
+#cwb{touch-action:none;cursor:grab;user-select:none}
+#cwb:active{cursor:grabbing}
+.cwh{cursor:move;touch-action:none;user-select:none}
+#cwb{transition:opacity .2s ease,transform .2s ease}
+#cwb.gone{opacity:0;transform:scale(.6);pointer-events:none}
+#cwb.pop{animation:cwPop .5s cubic-bezier(.3,1.5,.5,1)}
+#cw.on{display:flex;animation:cwIn .35s cubic-bezier(.2,.9,.25,1.15) both}
+#cw.out{display:flex;pointer-events:none;animation:cwOut .22s ease-in both}
+.cwg,#cwc button{animation:cwMsg .3s ease both}
+@keyframes cwIn{from{opacity:0;transform:translateY(18px) scale(.8)}to{opacity:1;transform:none}}
+@keyframes cwOut{from{opacity:1;transform:none}to{opacity:0;transform:translateY(18px) scale(.8)}}
+@keyframes cwPop{0%{transform:scale(.4);opacity:0}100%{transform:none;opacity:1}}
+@keyframes cwMsg{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media(max-width:480px){#cwb span{display:none}#cwb{padding:0 14px}}
 </style>
 </head>
 <body>
@@ -309,6 +399,7 @@ footer a:hover{text-decoration:underline}
   <span>Official website of Barangay Zapatera, City of Cebu</span>
   <div class="sr">
     <span id="clock"></span>
+    <button type="button" class="tsw" role="switch" aria-checked="false" aria-label="Dark mode"><span class="trk"></span><span>Dark mode</span></button>
     <a class="staff" id="staffLink" href="/admin.html">
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
       <span id="staffText">Staff login</span>
@@ -392,8 +483,8 @@ footer a:hover{text-decoration:underline}
 
 <section id="officials"><div class="wrap">
   <div class="head"><h2>Barangay officials</h2><p>Your elected leaders and staff.</p></div>
-  <div class="chief"><div class="av">PB</div><div><h3>[Name]</h3><span>Punong Barangay</span></div></div>
-  <div class="team">
+  <div class="chief" id="chiefBox"><div class="av">PB</div><div><h3>[Name]</h3><span>Punong Barangay</span></div></div>
+  <div class="team" id="teamBox">
     <div class="p"><div class="av">K</div><div><h3>[Name]</h3><span>Barangay Kagawad</span></div></div>
     <div class="p"><div class="av">K</div><div><h3>[Name]</h3><span>Barangay Kagawad</span></div></div>
     <div class="p"><div class="av">K</div><div><h3>[Name]</h3><span>Barangay Kagawad</span></div></div>
@@ -467,6 +558,80 @@ footer a:hover{text-decoration:underline}
   <div class="copy">Official website of Barangay Zapatera. Text in [brackets] is placeholder and must be replaced with verified details.</div>
 </div></footer>
 
+<script>
+/* landing page text saved by the Admin and Secretary (edit at /edit-site.html) */
+(async function(){
+  var MAP={
+    hero_title:['.hero h1'],
+    hero_text:['.hero p'],
+    days:['.hours dl div:nth-child(1) dd'],
+    hours:['.hours dl div:nth-child(2) dd'],
+    address:['.hours dl div:nth-child(3) dd','#contact table tr:nth-child(1) td'],
+    phone:['.hours dl div:nth-child(4) dd','#contact table tr:nth-child(3) td','.fg > div:nth-child(4) p:nth-child(2)'],
+    email:['#contact table tr:nth-child(4) td','.fg > div:nth-child(4) p:nth-child(3)'],
+    facebook:['#contact table tr:nth-child(5) td','.fg > div:nth-child(4) p:nth-child(4)'],
+    about_text:['#about .head p'],
+    mission:['.mv div:nth-child(1) p'],
+    vision:['.mv div:nth-child(2) p'],
+    hot_hall:['.hot div:nth-child(2) strong'],
+    hot_tanod:['.hot div:nth-child(3) strong'],
+    hot_health:['.hot div:nth-child(4) strong']
+  };
+  var PRE={fee_clearance:'Fee: ',fee_residency:'Fee: ',fee_indigency:'Fee: ',fee_business:'Fee: '};
+  try{
+    var c=await (await fetch('/api/content',{cache:'no-store'})).json();
+    Object.keys(MAP).forEach(function(k){
+      if(!c[k])return;
+      MAP[k].forEach(function(sel){var el=document.querySelector(sel);if(el)el.textContent=(PRE[k]||'')+c[k]});
+    });
+    if(c.days||c.hours){
+      var d=document.querySelector('.hours dl div:nth-child(1) dd'),h=document.querySelector('.hours dl div:nth-child(2) dd');
+      var row=document.querySelector('#contact table tr:nth-child(2) td');
+      if(d&&h&&row)row.textContent=d.textContent+', '+h.textContent;
+    }
+  }catch(e){}
+})();
+</script>
+
+<script>
+/* services and "how to request" steps saved by the Barangay Hall */
+(async function(){
+  try{
+    var d=await (await fetch('/api/services',{cache:'no-store'})).json();
+    var NS='http://www.w3.org/2000/svg';
+    function mk(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x)e.textContent=x;return e}
+
+    var grid=document.querySelector('#services .grid');
+    if(grid&&Array.isArray(d.services)&&d.services.length){
+      grid.replaceChildren();
+      d.services.forEach(function(s){
+        var card=mk('div','svc');
+        var svg=document.createElementNS(NS,'svg');svg.setAttribute('class','i');
+        var use=document.createElementNS(NS,'use');use.setAttribute('href','#'+s.icon);svg.appendChild(use);
+        card.append(svg,mk('h3','',s.name));
+        if(s.desc)card.append(mk('p','',s.desc));
+        if(s.reqs&&s.reqs.length){var ul=mk('ul');s.reqs.forEach(function(r){ul.append(mk('li','',r))});card.append(ul)}
+        card.append(mk('span','tag',s.fee?(/^free/i.test(s.fee)?s.fee:'Fee: '+s.fee):'Fee: [amount]'));
+        grid.append(card);
+      });
+    }
+
+    var sg=document.querySelector('#process .steps');
+    if(sg&&Array.isArray(d.steps)&&d.steps.length){
+      sg.replaceChildren();
+      d.steps.forEach(function(s){
+        var c=mk('div','step in');
+        c.append(mk('h3','',s.title));
+        if(s.text)c.append(mk('p','',s.text));
+        sg.append(c);
+      });
+      var hp=document.querySelector('#process .head p');
+      if(hp)hp.textContent=d.steps.length+' steps from preparation to pickup.';
+    }
+  }catch(e){}
+})();
+</script>
+
 <dialog id="nd" aria-labelledby="ndt">
   <button type="button" class="nd-x" id="ndx" aria-label="Close">&times;</button>
   <div class="nd-scroll">
@@ -489,6 +654,34 @@ footer a:hover{text-decoration:underline}
   </div>
   <div class="nlb" id="nlb" hidden><img alt=""></div>
 </dialog>
+
+<dialog id="od" aria-labelledby="odn">
+  <button type="button" class="od-x" id="odx" aria-label="Close">&times;</button>
+  <div class="od-cover"><span>Barangay Zapatera</span></div>
+  <div class="od-body">
+    <div class="od-av" id="odav"></div>
+    <h3 id="odn"></h3>
+    <span class="od-pos" id="odp"></span>
+    <div class="od-sec"><small>About the position</small><p id="odd"></p></div>
+    <div class="od-sec"><small>Office</small><p>Barangay Hall, Zapatera, Cebu City</p></div>
+  </div>
+  <div class="od-foot">
+    <button type="button" id="odpv">&lsaquo; Previous</button>
+    <span id="odc"></span>
+    <button type="button" id="odnx">Next &rsaquo;</button>
+  </div>
+</dialog>
+
+<button type="button" id="cwb" aria-label="Ask the virtual assistant" aria-expanded="false">
+  <svg class="i" viewBox="0 0 24 24" style="width:22px;height:22px"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.5A8 8 0 1 1 21 12z"/></svg><span>Ask us</span>
+</button>
+<div id="cw" role="dialog" aria-label="Virtual assistant">
+  <div class="cwh"><b>Barangay Assistant</b><button type="button" id="cwx" aria-label="Close">&times;</button></div>
+  <div id="cwm" aria-live="polite"></div>
+  <div id="cwc"></div>
+  <div class="cwn">AI assistant. It can make mistakes. Confirm important details with the Barangay Hall.</div>
+  <div class="cwf"><input id="cwi" maxlength="500" placeholder="Type your question" autocomplete="off"><button type="button" id="cws">Send</button></div>
+</div>
 
 <a id="up" href="#top" aria-label="Back to top"><svg class="i" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></a>
 
@@ -528,6 +721,15 @@ var HOURS={days:[1,2,3,4,5],open:8,close:17};
   }
   tick();setInterval(tick,1000);
   sync();setInterval(sync,600000);
+
+  /* dark / light switch */
+  (function(){
+    var sw=[].slice.call(document.querySelectorAll('.tsw'));
+    function paint(){sw.forEach(function(b){b.setAttribute('aria-checked',themeNow()==='dark'?'true':'false')})}
+    sw.forEach(function(b){b.addEventListener('click',function(){themeSet(themeNow()==='dark'?'light':'dark')})});
+    paint();
+    if(window.matchMedia)matchMedia('(prefers-color-scheme: dark)').addEventListener('change',paint);
+  })();
 
   /* scroll reveal with stagger */
   var sel='.pillar,.svc,.step,.p,.hot div,.mv div,.chief,.head,.news,.tw,form,.band .wrap,.fg>div';
@@ -648,6 +850,91 @@ var HOURS={days:[1,2,3,4,5],open:8,close:17};
     }catch(err){tres.append(mk('div',err.message))}
     tres.style.display='block';btn.disabled=false;
   });
+
+  /* barangay officials from the database (click a card to see the details) */
+  (async function(){
+    try{
+      var list=await (await fetch('/api/officials',{cache:'no-store'})).json();
+      if(!Array.isArray(list)||!list.length)return;
+      var mk=function(tag,cls,txt){var x=document.createElement(tag);if(cls)x.className=cls;if(txt)x.textContent=txt;return x};
+      var ini=function(n){return n.trim().split(/\s+/).slice(0,2).map(function(w){return w[0]}).join('').toUpperCase()};
+      var photoUrl=function(o){return '/official-photos/'+o.id+'.jpg?v='+encodeURIComponent(o.updated_at||o.created_at)};
+      var ROLES={
+        'Punong Barangay':'The elected head of the barangay. Leads the Barangay Hall and its programs and services for residents.',
+        'Barangay Kagawad':'An elected member of the Sangguniang Barangay, the barangay council that passes local ordinances and resolutions.',
+        'SK Chairperson':'The elected head of the Sangguniang Kabataan, the youth council. Leads programs for the youth of the barangay.',
+        'Barangay Secretary':'Keeps the official records and documents of the barangay and supports the work of the Barangay Hall.',
+        'Barangay Treasurer':'Keeps and reports the funds of the barangay.'
+      };
+
+      function avatar(o){
+        var a=mk('div','av');
+        if(o.has_photo){
+          var im=document.createElement('img');
+          im.src=photoUrl(o);im.alt=o.full_name;im.loading='lazy';a.append(im);
+        }else a.textContent=ini(o.full_name);
+        return a;
+      }
+
+      var chiefBox=document.getElementById('chiefBox'),teamBox=document.getElementById('teamBox');
+      var ci=list.findIndex(function(o){return o.position==='Punong Barangay'});
+      var chief=ci>-1?list[ci]:null;
+      var others=list.filter(function(o,i){return i!==ci});
+      var order=chief?[chief].concat(others):others;
+
+      /* profile pop-up with Previous / Next */
+      var od=document.getElementById('od'),idx=0;
+      function openOff(o){
+        idx=order.indexOf(o);
+        var av=document.getElementById('odav');av.replaceChildren();
+        if(o.has_photo){
+          var im=document.createElement('img');im.src=photoUrl(o);im.alt=o.full_name;av.append(im);
+        }else av.textContent=ini(o.full_name);
+        document.getElementById('odn').textContent=o.full_name;
+        document.getElementById('odp').textContent=o.position;
+        document.getElementById('odd').textContent=ROLES[o.position]||'Serves the people of Barangay Zapatera.';
+        document.getElementById('odc').textContent=(idx+1)+' of '+order.length;
+        od.classList.toggle('solo',order.length<2);
+        od.scrollTop=0;
+        if(!od.open)od.showModal();
+      }
+      function step(d){openOff(order[(idx+d+order.length)%order.length])}
+      document.getElementById('odpv').onclick=function(){step(-1)};
+      document.getElementById('odnx').onclick=function(){step(1)};
+      document.getElementById('odx').onclick=function(){od.close()};
+      od.addEventListener('click',function(e){if(e.target===od)od.close()});
+      od.addEventListener('keydown',function(e){
+        if(order.length<2)return;
+        if(e.key==='ArrowRight')step(1);
+        if(e.key==='ArrowLeft')step(-1);
+      });
+
+      function clickable(node,o){
+        node.classList.add('click');
+        node.tabIndex=0;node.setAttribute('role','button');
+        node.setAttribute('aria-label','View profile of '+o.full_name);
+        node.onclick=function(){openOff(o)};
+        node.onkeydown=function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();openOff(o)}};
+      }
+
+      chiefBox.replaceChildren();
+      if(chief){
+        var t=mk('div');t.append(mk('h3','',chief.full_name),mk('span','',chief.position));
+        chiefBox.append(avatar(chief),t);
+        clickable(chiefBox,chief);
+        chiefBox.style.display='';
+      }else chiefBox.style.display='none';
+
+      teamBox.replaceChildren();
+      others.forEach(function(o){
+        var card=mk('div','p'),t=mk('div');
+        t.append(mk('h3','',o.full_name),mk('span','',o.position));
+        card.append(avatar(o),t);
+        clickable(card,o);
+        teamBox.append(card);
+      });
+    }catch(e){}
+  })();
 
   /* announcements from the database */
   (async function(){
@@ -804,6 +1091,125 @@ var HOURS={days:[1,2,3,4,5],open:8,close:17};
       }
     }catch(e){}
   })();
+})();
+</script>
+
+<script>
+/* AI assistant: guided questions, suggestions, drag while open, resets to default spot on close */
+(function(){
+  var btn=document.getElementById('cwb'),box=document.getElementById('cw'),msgs=document.getElementById('cwm');
+  var chips=document.getElementById('cwc'),inp=document.getElementById('cwi'),send=document.getElementById('cws');
+  var hist=[],closeT=0;
+  var START=['I need a document','I want to report a problem','I have a dispute with a neighbor','Check my request','I am not sure what I need'];
+
+  /* ---- drag (only lasts while the chat is open) ---- */
+  var pos=null,suppress=false;
+  function place(){
+    if(!pos)return;
+    var vw=window.innerWidth,vh=window.innerHeight,bw=btn.offsetWidth,bh=btn.offsetHeight;
+    pos.x=Math.max(8,Math.min(vw-bw-8,pos.x));
+    pos.y=Math.max(8,Math.min(vh-bh-8,pos.y));
+    btn.style.left=pos.x+'px';btn.style.top=pos.y+'px';btn.style.bottom='auto';
+    if(box.classList.contains('on')){
+      var pw=box.offsetWidth,ph=box.offsetHeight;
+      var left=Math.max(8,Math.min(vw-pw-8,pos.x));
+      var above=pos.y-ph-10>=8;
+      var top=above?pos.y-ph-10:pos.y+bh+10;
+      top=Math.max(8,Math.min(vh-ph-8,top));
+      box.style.left=left+'px';box.style.top=top+'px';box.style.bottom='auto';
+      box.style.transformOrigin=(pos.x+bw/2-left)+'px '+(above?ph:0)+'px';
+    }
+  }
+  /* put the button and the chat window back to their original CSS position */
+  function resetPos(){
+    pos=null;
+    btn.style.left='';btn.style.top='';btn.style.bottom='';
+    box.style.left='';box.style.top='';box.style.bottom='';box.style.transformOrigin='';
+  }
+  function makeDrag(handle,isBtn){
+    var sx,sy,ox,oy,down=false,moved=false;
+    handle.addEventListener('pointerdown',function(e){
+      if(e.target.closest('#cwx'))return;
+      down=true;moved=false;sx=e.clientX;sy=e.clientY;
+      var r=btn.getBoundingClientRect();
+      ox=r.left+r.width/2-btn.offsetWidth/2;
+      oy=r.top+r.height/2-btn.offsetHeight/2;
+      handle.setPointerCapture(e.pointerId);
+    });
+    handle.addEventListener('pointermove',function(e){
+      if(!down)return;
+      var dx=e.clientX-sx,dy=e.clientY-sy;
+      if(!moved&&Math.abs(dx)+Math.abs(dy)<6)return;
+      moved=true;pos={x:ox+dx,y:oy+dy};place();
+    });
+    handle.addEventListener('pointerup',function(){
+      if(!down)return;
+      down=false;
+      if(moved&&isBtn){suppress=true;setTimeout(function(){suppress=false},0)}
+    });
+  }
+  makeDrag(btn,true);
+  makeDrag(document.querySelector('.cwh'),false);
+  window.addEventListener('resize',place);
+  btn.classList.add('pop');
+
+  /* ---- chat ---- */
+  function add(cls,txt){var d=document.createElement('div');d.className='cwg '+cls;d.textContent=txt;msgs.append(d);msgs.scrollTop=msgs.scrollHeight;return d}
+  function showChips(list){
+    chips.replaceChildren();
+    (list||[]).forEach(function(t){
+      var b=document.createElement('button');b.type='button';b.textContent=t;
+      b.onclick=function(){ask(t)};
+      chips.append(b);
+    });
+  }
+  function toggle(open){
+    btn.setAttribute('aria-expanded',open);
+    if(open){
+      clearTimeout(closeT);
+      box.classList.remove('out');box.classList.add('on');
+      btn.classList.remove('pop');btn.classList.add('gone');
+      place();
+      if(!msgs.children.length){
+        add('bot','Hello! I am the Barangay assistant. Not sure what to ask? Just tap an option below, or type in your own words.');
+        showChips(START);
+      }
+      inp.focus();
+    }else{
+      if(!box.classList.contains('on')||box.classList.contains('out'))return;
+      box.classList.add('out');
+      closeT=setTimeout(function(){
+        box.classList.remove('on','out');
+        resetPos();
+        btn.classList.remove('gone','pop');
+        void btn.offsetWidth;
+        btn.classList.add('pop');
+      },220);
+    }
+  }
+  btn.onclick=function(){if(suppress)return;toggle(true)};
+  document.getElementById('cwx').onclick=function(){toggle(false)};
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')toggle(false)});
+
+  async function ask(text){
+    var q=(text||inp.value).trim();if(!q||send.disabled)return;
+    inp.value='';showChips([]);add('me',q);hist.push({role:'user',content:q});
+    send.disabled=true;var wait=add('bot','Typing...');
+    var sug=[];
+    try{
+      var r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:hist}),signal:AbortSignal.timeout(30000)});
+      var d=await r.json().catch(function(){return {}});
+      if(!r.ok)throw new Error(d.error||'Something went wrong. Please try again.');
+      wait.textContent=d.reply;hist.push({role:'assistant',content:d.reply});sug=d.suggestions||[];
+    }catch(e){
+      wait.textContent=(e.name==='TimeoutError'||e.name==='AbortError')?'This is taking too long. Please try again.':e.message;
+      hist.pop();sug=START;
+    }
+    showChips(sug);
+    send.disabled=false;msgs.scrollTop=msgs.scrollHeight;inp.focus();
+  }
+  send.onclick=function(){ask()};
+  inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();ask()}});
 })();
 </script>
 </body>

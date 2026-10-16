@@ -6,16 +6,30 @@
 <meta name="robots" content="noindex">
 <title>Staff Portal | Barangay Zapatera</title>
 <link rel="icon" href="/seal.png">
+<script>
+/* theme: apply the saved choice before the page paints (no flash) */
+(function(){
+  var root=document.documentElement;
+  try{var s=localStorage.getItem('theme');if(s==='dark'||s==='light')root.setAttribute('data-theme',s)}catch(e){}
+  window.themeNow=function(){return root.getAttribute('data-theme')||(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')};
+  window.themeSet=function(t){
+    root.setAttribute('data-theme',t);
+    try{localStorage.setItem('theme',t)}catch(e){}
+    document.querySelectorAll('.tsw').forEach(function(b){b.setAttribute('aria-checked',t==='dark'?'true':'false')});
+  };
+})();
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#fff;--alt:#f3f5fa;--surface:#fff;--ink:#141a2b;--muted:#586277;--brand:#241d6b;--link:#241d6b;--accent:#d4231f;--on-brand:#fff;--line:#e0e4ee;--tint:#ebe9fb;--green:#1f9d55;
   --seal:url(/seal.png);
   --head:"Manrope",system-ui,sans-serif;--body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:light;
   box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
 }
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d111f;--alt:#121830;--surface:#171e38;--ink:#eef0f7;--muted:#a1aac2;--brand:#17124a;--link:#aaa5ff;--accent:#ff5d58;--line:#29325a;--tint:#221c5a}}
-:root[data-theme="dark"]{--bg:#0d111f;--alt:#121830;--surface:#171e38;--ink:#eef0f7;--muted:#a1aac2;--brand:#17124a;--link:#aaa5ff;--accent:#ff5d58;--line:#29325a;--tint:#221c5a}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d111f;--alt:#121830;--surface:#171e38;--ink:#eef0f7;--muted:#a1aac2;--brand:#17124a;--link:#aaa5ff;--accent:#ff5d58;--line:#29325a;--tint:#221c5a;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0d111f;--alt:#121830;--surface:#171e38;--ink:#eef0f7;--muted:#a1aac2;--brand:#17124a;--link:#aaa5ff;--accent:#ff5d58;--line:#29325a;--tint:#221c5a;color-scheme:dark}
 *{box-sizing:border-box}
 body{margin:0;background:var(--alt);color:var(--ink);font:400 1rem/1.6 var(--body);-webkit-font-smoothing:antialiased}
 h1,h2,h3,h4{font-family:var(--head);line-height:1.15;margin:0;letter-spacing:-.01em}
@@ -36,6 +50,16 @@ label{display:grid;gap:6px;font-weight:600;font-size:.9rem}
 .btn.sm{min-height:36px;padding:0 14px;font-size:.86rem;border-width:1px}
 .btn.d{color:var(--accent);border-color:var(--accent)}
 .spin{width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+
+/* dark / light switch */
+.tsw{display:inline-flex;align-items:center;gap:9px;background:none;border:0;padding:2px;color:#fff;font-weight:600;font-size:.8rem;cursor:pointer;border-radius:99px}
+.tsw .trk{position:relative;flex:none;width:44px;height:24px;border-radius:99px;background:rgba(255,255,255,.28);border:1px solid rgba(255,255,255,.5);transition:background .25s,border-color .25s}
+.tsw .trk::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.35);transition:transform .25s cubic-bezier(.3,1.4,.5,1)}
+.tsw[aria-checked="true"] .trk{background:var(--accent);border-color:var(--accent)}
+.tsw[aria-checked="true"] .trk::after{transform:translateX(20px)}
+.fc .tsw{position:absolute;top:20px;left:24px;color:var(--muted)}
+.fc .tsw .trk{background:var(--line);border-color:var(--line)}
+.fc .tsw[aria-checked="true"] .trk{background:var(--accent);border-color:var(--accent)}
 
 /* avatars (photo or initials) */
 .avatar{--s:40px;width:var(--s);height:var(--s);border-radius:50%;flex:none;display:grid;place-items:center;background:var(--tint);color:var(--link);font:800 calc(var(--s)*.38)/1 var(--head);overflow:hidden;user-select:none}
@@ -85,7 +109,8 @@ form.box{display:grid;gap:16px}
   .bp .sub{font-size:.85rem}
   .feat,.bp .foot,.bp::after{display:none}
   .back{top:12px;right:16px}
-  .fc{align-items:flex-start;padding-top:48px}
+  .fc .tsw{top:10px;left:16px}
+  .fc{align-items:flex-start;padding-top:56px}
 }
 
 /* ===== dashboard: strip + header (same as website) ===== */
@@ -95,7 +120,7 @@ form.box{display:grid;gap:16px}
 .who{display:inline-flex;align-items:center;gap:9px}
 .pill{display:inline-flex;align-items:center;color:#fff;background:transparent;font-weight:600;font-size:.8rem;padding:4px 14px;border:1px solid rgba(255,255,255,.45);border-radius:99px;cursor:pointer;text-decoration:none}
 .pill:hover{background:#fff;color:var(--brand)}
-.sr{display:flex;gap:8px;flex-wrap:wrap}
+.sr{display:flex;gap:8px 12px;flex-wrap:wrap;align-items:center}
 header{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:1px solid var(--line)}
 .bar{display:flex;align-items:center;justify-content:space-between;gap:18px;min-height:70px}
 .brand{display:flex;align-items:center;gap:13px;color:var(--ink)}
@@ -194,6 +219,25 @@ footer span{opacity:.8}
 .toast.bad{border-left-color:var(--accent)}
 .toast.out{opacity:0;transition:opacity .35s}
 
+/* ===== Barangay Info editor ===== */
+.sgrid{display:grid;gap:18px;grid-template-columns:240px 1fr;align-items:start}
+@media(max-width:860px){.sgrid{grid-template-columns:1fr}}
+.snav{position:sticky;top:90px;display:grid;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px}
+@media(max-width:860px){.snav{position:static;display:flex;overflow-x:auto}}
+.snav button{text-align:left;background:transparent;border:0;border-radius:8px;padding:10px 12px;color:var(--ink);cursor:pointer;display:grid;gap:2px;white-space:nowrap}
+.snav button b{font-size:.92rem}
+.snav button small{color:var(--muted);font-size:.76rem;font-weight:400}
+.snav button:hover{background:var(--alt)}
+.snav button.on{background:var(--tint);box-shadow:inset 3px 0 0 var(--accent)}
+.spane{display:none}
+.spane.on{display:grid;gap:14px}
+.ecard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;display:grid;gap:12px}
+.ehead{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.ffields{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.ffields .wide{grid-column:1/-1}
+.sbar{position:sticky;bottom:0;z-index:5;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 16px;box-shadow:0 -6px 20px rgba(20,26,43,.08);margin-top:14px}
+.sbar .dirty{color:var(--accent);font-weight:600}
+
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,14px)}to{opacity:1;transform:translate(-50%,0)}}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes shake{0%,100%{transform:none}20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}
@@ -221,6 +265,7 @@ footer span{opacity:.8}
   </aside>
 
   <div class="fc">
+    <button type="button" class="tsw" role="switch" aria-checked="false" aria-label="Dark mode"><span class="trk"></span><span>Dark mode</span></button>
     <a class="back" href="/">&larr; Back to website</a>
 
     <form id="login" class="box hide" autocomplete="on">
@@ -271,6 +316,7 @@ footer span{opacity:.8}
   <div class="strip"><div class="wrap">
     <span class="who"><span class="avatar sm" id="whoav"></span><span id="who"></span></span>
     <div class="sr">
+      <button type="button" class="tsw" role="switch" aria-checked="false" aria-label="Dark mode"><span class="trk"></span><span>Dark mode</span></button>
       <a class="pill" href="/">View website</a>
       <button class="pill" id="chg">Change password</button>
       <button class="pill" id="out">Sign out</button>
@@ -282,6 +328,8 @@ footer span{opacity:.8}
       <button data-go="ann" class="on">Announcements</button>
       <button data-go="msgs" id="nav-msgs">Messages <span class="cnt hide" id="mcnt"></span></button>
       <button data-go="accts" id="nav-accts">Accounts</button>
+      <button data-go="offs" id="nav-offs">Officials</button>
+      <button data-go="site" id="nav-site">Barangay Info</button>
       <button data-go="prof" id="nav-prof">My profile</button>
     </nav>
   </div></header>
@@ -357,6 +405,42 @@ footer span{opacity:.8}
         <div id="uerr" class="meta" style="color:var(--accent)"></div>
       </form>
       <div id="ulist"></div>
+    </section>
+
+    <section id="offs" class="hide">
+      <div class="ph"><h2>Barangay officials</h2><p>These appear in the Officials section of the public website. Changes show right away.</p></div>
+      <form id="of" class="card stack">
+        <h3 id="oft">Add official</h3>
+        <div class="two">
+          <input id="on" placeholder="Full name" required maxlength="100">
+          <select id="op" required></select>
+        </div>
+        <label>Photo (optional)<input id="oph" type="file" accept="image/*"></label>
+        <label class="hide" id="ormw" style="grid-auto-flow:column;justify-content:start;align-items:center">
+          <input type="checkbox" id="orm" style="width:auto"> Remove current photo
+        </label>
+        <div class="acts">
+          <button class="btn red" id="obtn"><span>Add official</span></button>
+          <button type="button" class="btn hide" id="ocx">Cancel edit</button>
+        </div>
+      </form>
+      <div id="olist"></div>
+    </section>
+    <section id="sec-site" class="hide">
+      <div class="ph"><h2>Barangay Info</h2><p>Update the barangay's official details here: about, contact, services, how to request a document, and hotlines. They show on the public website and are also used by the chat assistant. Leave a field blank to show the placeholder text.</p></div>
+      <div class="sgrid">
+        <aside class="snav" id="snav" aria-label="Sections"></aside>
+        <form id="sf">
+          <div id="spanes"></div>
+          <div class="sbar">
+            <span class="meta" id="sstate">All changes saved</span>
+            <div class="acts">
+              <a class="btn sm" href="/" target="_blank" rel="noopener">View website</a>
+              <button class="btn red" id="sbtn"><span>Save changes</span></button>
+            </div>
+          </div>
+        </form>
+      </div>
     </section>
 
     <section id="sec-prof" class="hide">
@@ -492,7 +576,7 @@ function view(name) {
 }
 
 /* ---------- tabs ---------- */
-const panels = { ann: 'sec-ann', msgs: 'msgs', accts: 'accts', prof: 'sec-prof' };
+const panels = { ann: 'sec-ann', msgs: 'msgs', accts: 'accts', offs: 'offs', site: 'sec-site', prof: 'sec-prof' };
 function tab(n) {
   Object.entries(panels).forEach(([k, id]) => $(id).classList.toggle('hide', k !== n));
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.go === n));
@@ -511,7 +595,7 @@ function busy(btn, on, text) {
   if (on && !s) btn.prepend(el('i', { className: 'spin' }));
   if (!on && s) s.remove();
 }
-['lb', 'pb', 'abtn', 'prb', 'edb'].forEach(id => $(id).dataset.label = $(id).textContent.trim());
+['lb', 'pb', 'abtn', 'prb', 'edb', 'obtn', 'sbtn'].forEach(id => $(id).dataset.label = $(id).textContent.trim());
 
 function toast(msg, bad) {
   const t = el('div', { className: 'toast' + (bad ? ' bad' : ''), textContent: msg });
@@ -554,6 +638,15 @@ $('p1').addEventListener('input', () => {
   $('mt').style.background = color;
   $('mh').textContent = v ? label : 'At least 8 characters. Mix letters and numbers.';
 });
+
+/* ---------- dark / light switch ---------- */
+(function () {
+  const sw = [...document.querySelectorAll('.tsw')];
+  const paint = () => sw.forEach(b => b.setAttribute('aria-checked', themeNow() === 'dark' ? 'true' : 'false'));
+  sw.forEach(b => b.addEventListener('click', () => themeSet(themeNow() === 'dark' ? 'light' : 'dark')));
+  paint();
+  if (window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener('change', paint);
+})();
 
 /* ---------- dashboard ---------- */
 function showNotice(...nodes) {
@@ -901,6 +994,207 @@ async function loadUsers() {
   $('ulist').replaceChildren(el('div', { className: 'tbl' }, el('table', {}, head, tb)));
 }
 
+/* ---------- officials ---------- */
+const OFF_POS = ['Punong Barangay', 'Barangay Kagawad', 'SK Chairperson', 'Barangay Secretary', 'Barangay Treasurer'];
+let editingOff = null;
+OFF_POS.forEach(p => $('op').append(el('option', { value: p, textContent: p })));
+
+function resetOffForm() {
+  $('of').reset(); editingOff = null;
+  $('of').classList.remove('editing');
+  $('oft').textContent = 'Add official';
+  $('obtn').dataset.label = 'Add official';
+  $('obtn').querySelector('span').textContent = 'Add official';
+  $('ocx').classList.add('hide');
+  $('ormw').classList.add('hide');
+}
+$('ocx').onclick = resetOffForm;
+
+function startOffEdit(o) {
+  editingOff = o;
+  $('on').value = o.full_name; $('op').value = o.position;
+  $('oph').value = ''; $('orm').checked = false;
+  $('ormw').classList.toggle('hide', !o.has_photo);
+  $('of').classList.add('editing');
+  $('oft').textContent = 'Edit official';
+  $('obtn').dataset.label = 'Save changes';
+  $('obtn').querySelector('span').textContent = 'Save changes';
+  $('ocx').classList.remove('hide');
+  $('of').scrollIntoView({ behavior: 'smooth' });
+  $('on').focus();
+}
+
+function paintOfficial(node, o) {
+  node.replaceChildren();
+  if (o.has_photo) node.append(el('img', { src: '/official-photos/' + o.id + '.jpg?v=' + encodeURIComponent(o.updated_at || o.created_at), alt: '' }));
+  else node.textContent = initials(o.full_name);
+}
+
+async function loadOfficials() {
+  const list = await api('/api/officials');
+  const box = $('olist'); box.replaceChildren();
+  if (!list.length) { box.append(el('div', { className: 'empty', textContent: 'No officials added yet. The website still shows the placeholder names.' })); return; }
+  list.forEach(o => {
+    const av = el('span', { className: 'avatar md' });
+    paintOfficial(av, o);
+    const edit = el('button', { className: 'btn sm', textContent: 'Edit' });
+    edit.onclick = () => startOffEdit(o);
+    const del = el('button', { className: 'btn sm d', textContent: 'Delete' });
+    del.onclick = async () => {
+      if (!confirm('Remove ' + o.full_name + ' from the website?')) return;
+      try {
+        await api('/api/admin/officials/' + o.id, 'DELETE');
+        if (editingOff && editingOff.id === o.id) resetOffForm();
+        loadOfficials(); toast('Official removed');
+      } catch (e) { toast(e.message, true); }
+    };
+    box.append(el('div', { className: 'card row' },
+      el('div', { className: 'ucell' }, av, el('div', {}, el('b', { textContent: o.full_name }), el('div', { className: 'meta', textContent: o.position }))),
+      el('div', { className: 'acts' }, edit, del)));
+  });
+}
+
+$('of').onsubmit = async e => {
+  e.preventDefault();
+  busy($('obtn'), true, 'Saving');
+  try {
+    const body = { full_name: $('on').value, position: $('op').value };
+    const f = $('oph').files[0];
+    if (f) body.photo = await squareShrink(f);
+    else if (editingOff && $('orm').checked) body.remove_photo = true;
+    const was = !!editingOff;
+    if (editingOff) await api('/api/admin/officials/' + editingOff.id, 'PATCH', body);
+    else await api('/api/admin/officials', 'POST', body);
+    resetOffForm(); loadOfficials();
+    toast(was ? 'Official updated' : 'Official added');
+  } catch (err) { toast(err.message, true); }
+  busy($('obtn'), false);
+};
+
+/* ---------- Barangay Info (Punong Barangay and Secretary) ---------- */
+const SITE_NAV = [
+  ['About Barangay Zapatera', 'About', 'Who we are, mission, vision'],
+  ['Hall hours and contact details', 'Contact and hours', 'Address, phone, email, schedule'],
+  ['__services', 'Services', 'Documents, requirements, fees'],
+  ['__steps', 'How to request', 'Steps shown to residents'],
+  ['Emergency hotlines', 'Hotlines', 'Numbers residents can call'],
+  ['Top of the page', 'Page headline', 'Main title and intro']
+];
+const SVC_ICONS = [['doc', 'Document'], ['home', 'House'], ['heart', 'Health'], ['biz', 'Business'], ['scale', 'Mediation'], ['shield', 'Safety']];
+let siteDirty = false, svcList = [], stepList = [], sitePane = null;
+
+function markDirty() { siteDirty = true; $('sstate').textContent = 'Unsaved changes'; $('sstate').classList.add('dirty'); }
+function markClean() { siteDirty = false; $('sstate').textContent = 'All changes saved'; $('sstate').classList.remove('dirty'); }
+window.addEventListener('beforeunload', e => { if (siteDirty) { e.preventDefault(); e.returnValue = ''; } });
+
+function showPane(key) {
+  sitePane = key;
+  $('spanes').querySelectorAll('.spane').forEach(p => p.classList.toggle('on', p.dataset.p === key));
+  $('snav').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.p === key));
+}
+
+const fld = (text, node, wide) => el('label', { className: wide ? 'wide' : '' }, text, node);
+const bind = (node, obj, key, conv) => { node.oninput = () => { obj[key] = conv ? conv(node.value) : node.value; markDirty(); }; return node; };
+
+/* a list of editable cards with Up, Down, Remove and Add */
+function listCards(box, list, label, blank, build) {
+  box.replaceChildren();
+  const redraw = () => listCards(box, list, label, blank, build);
+  list.forEach((item, i) => {
+    const up = el('button', { type: 'button', className: 'btn sm', textContent: 'Up', disabled: i === 0 });
+    const dn = el('button', { type: 'button', className: 'btn sm', textContent: 'Down', disabled: i === list.length - 1 });
+    const rm = el('button', { type: 'button', className: 'btn sm d', textContent: 'Remove' });
+    const move = d => { [list[i], list[i + d]] = [list[i + d], list[i]]; markDirty(); redraw(); };
+    up.onclick = () => move(-1); dn.onclick = () => move(1);
+    rm.onclick = () => { if (!confirm('Remove this ' + label.toLowerCase() + '?')) return; list.splice(i, 1); markDirty(); redraw(); };
+    const body = el('div', { className: 'ffields' });
+    build(item, body);
+    box.append(el('div', { className: 'ecard' },
+      el('div', { className: 'ehead' }, el('b', { textContent: label + ' ' + (i + 1) }), el('div', { className: 'acts' }, up, dn, rm)),
+      body));
+  });
+  const add = el('button', { type: 'button', className: 'btn', textContent: 'Add ' + label.toLowerCase() });
+  add.onclick = () => {
+    list.push(blank()); markDirty(); redraw();
+    const cards = box.querySelectorAll('.ecard');
+    cards[cards.length - 1].querySelector('input').focus();
+  };
+  box.append(add);
+}
+
+const buildService = (s, body) => {
+  const icon = el('select');
+  SVC_ICONS.forEach(([v, t]) => icon.append(el('option', { value: v, textContent: t })));
+  icon.value = s.icon || 'doc';
+  body.append(
+    fld('Service name', bind(el('input', { value: s.name || '', maxLength: 80, placeholder: 'e.g. Barangay Clearance' }), s, 'name')),
+    fld('Fee (amount only, e.g. PHP 50 or Free)', bind(el('input', { value: s.fee || '', maxLength: 40, placeholder: 'PHP 50' }), s, 'fee')),
+    fld('Short description', bind(el('textarea', { value: s.desc || '', maxLength: 200, rows: 2 }), s, 'desc'), true),
+    fld('What to bring (one item per line)', bind(el('textarea', { value: (s.reqs || []).join('\n'), rows: 4 }), s, 'reqs', v => v.split('\n')), true),
+    fld('Icon', bind(icon, s, 'icon')));
+};
+const buildStep = (s, body) => {
+  body.append(
+    fld('Step title', bind(el('input', { value: s.title || '', maxLength: 60, placeholder: 'e.g. Visit the Hall' }), s, 'title'), true),
+    fld('Details', bind(el('textarea', { value: s.text || '', maxLength: 200, rows: 2 }), s, 'text'), true));
+};
+
+async function loadSite(keep) {
+  const [fields, sv] = await Promise.all([api('/api/admin/content'), api('/api/admin/services')]);
+  svcList = sv.services; stepList = sv.steps;
+  const groups = {};
+  fields.forEach(f => (groups[f.group] = groups[f.group] || []).push(f));
+  const known = SITE_NAV.map(n => n[0]);
+  const nav = SITE_NAV.filter(n => n[0].startsWith('__') || groups[n[0]])
+    .concat(Object.keys(groups).filter(g => !known.includes(g)).map(g => [g, g, '']));
+
+  const spanes = $('spanes'), snav = $('snav');
+  spanes.replaceChildren(); snav.replaceChildren();
+  nav.forEach(([key, label, hint]) => {
+    const b = el('button', { type: 'button' }, el('b', { textContent: label }), el('small', { textContent: hint }));
+    b.dataset.p = key; b.onclick = () => showPane(key); snav.append(b);
+
+    const pane = el('div', { className: 'spane' }); pane.dataset.p = key;
+    if (key === '__services') {
+      pane.append(el('div', { className: 'meta', textContent: 'Each card appears in the Services section of the website. Remove every card to bring back the original list.' }));
+      const box = el('div', { className: 'stack' }); pane.append(box);
+      listCards(box, svcList, 'Service', () => ({ name: '', desc: '', reqs: [], fee: '', icon: 'doc' }), buildService);
+    } else if (key === '__steps') {
+      pane.append(el('div', { className: 'meta', textContent: 'These steps appear under "How to request a document". Up to 8 steps. Remove every step to bring back the original ones.' }));
+      const box = el('div', { className: 'stack' }); pane.append(box);
+      listCards(box, stepList, 'Step', () => ({ title: '', text: '' }), buildStep);
+    } else {
+      const grid = el('div', { className: 'ffields' });
+      (groups[key] || []).forEach(f => {
+        const inp = el(f.multi ? 'textarea' : 'input', { value: f.value || '', maxLength: f.max, placeholder: f.def || '' });
+        if (f.multi) inp.rows = 3;
+        inp.dataset.k = f.key; inp.oninput = markDirty;
+        grid.append(fld(f.label, inp, f.multi || f.max >= 120));
+      });
+      pane.append(el('div', { className: 'ecard' }, grid));
+    }
+    spanes.append(pane);
+  });
+  showPane(keep && nav.some(n => n[0] === keep) ? keep : nav[0][0]);
+  markClean();
+}
+
+$('sf').onsubmit = async e => {
+  e.preventDefault();
+  const values = {};
+  $('spanes').querySelectorAll('[data-k]').forEach(i => { values[i.dataset.k] = i.value; });
+  if (svcList.some(s => (s.name || '').trim().length < 2)) { toast('Every service needs a name.', true); showPane('__services'); return; }
+  if (stepList.some(s => (s.title || '').trim().length < 2)) { toast('Every step needs a title.', true); showPane('__steps'); return; }
+  busy($('sbtn'), true, 'Saving');
+  try {
+    await api('/api/admin/content', 'PUT', { values });
+    await api('/api/admin/services', 'PUT', { services: svcList, steps: stepList });
+    await loadSite(sitePane);
+    toast('Barangay info saved');
+  } catch (err) { toast(err.message, true); }
+  busy($('sbtn'), false);
+};
+
 async function enter(u) {
   user = u; forced = !!u.must_change;
   refreshUserUI();
@@ -911,11 +1205,13 @@ async function enter(u) {
   $('nav-msgs').classList.toggle('hide', !canMsg);
   $('stw-msg').classList.toggle('hide', !canMsg);
   $('nav-accts').classList.toggle('hide', u.role !== 'admin');
+  $('nav-offs').classList.toggle('hide', u.role !== 'admin');
+  $('nav-site').classList.toggle('hide', u.role !== 'admin');
   $('stw-usr').classList.toggle('hide', u.role !== 'admin');
   tab('ann');
   await loadAnnouncements();
   if (canMsg) await loadMessages();
-  if (u.role === 'admin') await loadUsers();
+  if (u.role === 'admin') { await loadUsers(); await loadOfficials(); await loadSite(); }
 }
 
 /* ---------- events ---------- */
