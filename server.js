@@ -2,7 +2,7 @@ const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
 const rateLimit = require('express-rate-limit');
-const { createClient } = require('@libsql/client');
+const { createClient } = require('@libsql/client/web');
 
 const {
   ADMIN_USERNAME = 'admin', ADMIN_PASSWORD, PORT = 3000, NODE_ENV,
@@ -15,7 +15,19 @@ if (!TURSO_DATABASE_URL) {
 }
 
 // ---------- Database (Turso) ----------
-const client = createClient({ url: TURSO_DATABASE_URL, authToken: TURSO_AUTH_TOKEN });
+let _client = null;
+const client = new Proxy({}, {
+  get(_, prop) {
+    if (!_client) {
+      const url = String(TURSO_DATABASE_URL).trim()
+        .replace(/^["']+|["']+$/g, '')
+        .replace(/^((libsql|https?|wss?):\/*)+/i, 'https://')
+      const authToken = String(TURSO_AUTH_TOKEN || '').trim().replace(/^["']+|["']+$/g, '');
+      _client = createClient({ url, authToken });
+    } const v = _client[prop];
+    return typeof v === 'function' ? v.bind(_client) : v;
+  },
+});
 
 const toObjs = r => r.rows.map(row => {
   const o = {};
@@ -163,7 +175,7 @@ const verifyPw = (pw, stored) => {
   const hb = Buffer.from(h, 'hex');
   return hb.length === calc.length && crypto.timingSafeEqual(calc, hb);
 };
-const DUMMY = hashPw('not-a-real-password');
+let DUMMY = null;
 const sha = t => crypto.createHash('sha256').update(t).digest('hex');
 const SESSION_MS = 8 * 60 * 60 * 1000;
 const secure = NODE_ENV === 'production' ? '; Secure' : '';
@@ -203,10 +215,16 @@ const ready = (req, res, next) =>
 const can = (...roles) => (req, res, next) =>
   roles.includes(req.user.role) ? next() : res.status(403).json({ error: 'You do not have access to this.' });
 
-const limit = (max, minutes) => rateLimit({
-  windowMs: minutes * 60 * 1000, max, standardHeaders: true, legacyHeaders: false,
-  message: { error: 'Too many attempts. Please try again later.' }
-});
+const limit = (max, minutes) => {
+  let mw = null;
+  return (req, res, next) => (mw ||= rateLimit({
+    windowMs: minutes * 60 * 1000, max, standardHeaders: true, legacyHeaders: false,
+    keyGenerator: req => req.headers['cf-connecting-ip'] || req.ip || 'unknown',
+    validate: false,
+    message: { error: 'Too many attempts. Please try again later.' }
+  }))(req, res, next);
+};
+
 const clean = (v, max) => String(v ?? '').trim().slice(0, max);
 const me = u => ({
   id: u.id, username: u.username, full_name: u.full_name, position: u.position, role: u.role,
@@ -275,41 +293,26 @@ const sendJpeg = (res, data, cache) => {
 
 // ---------- App ----------
 const app = express();
+
+let booted = null;
+app.use(h(async (req, res, next) => {
+  await (booted ||= boot().catch(e => { booted = null; throw e; }));
+  next();
+}));
+
 app.set('trust proxy', 1);
 // routes that can carry photos read their own larger body; everything else stays small
 const bigBody = req =>
   (req.method === 'PATCH' && (req.path.startsWith('/api/admin/messages/') || req.path.startsWith('/api/staff/announcements/') || req.path.startsWith('/api/admin/officials/') || req.path === '/api/staff/profile')) ||
   (req.method === 'POST' && (req.path === '/api/staff/announcements' || req.path === '/api/admin/officials' || req.path === '/api/messages'));
 app.use((req, res, next) => (bigBody(req) || (req.method === 'PUT' && (req.path === '/api/admin/content' || req.path === '/api/admin/services'))) ? next() : express.json({ limit: '20kb' })(req, res, next));
-app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------- Public ----------
-// Real time from the internet, so a wrong clock or time zone does not affect the site
-let timeOffset = 0, timeSource = 'device';
-async function syncTime() {
-  for (const url of ['https://www.google.com', 'https://www.cloudflare.com', 'https://api.github.com']) {
-    try {
-      const t0 = Date.now();
-      const r = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(5000) });
-      const t1 = Date.now();
-      const d = Date.parse(r.headers.get('date'));
-      if (!Number.isNaN(d)) {
-        timeOffset = d + 500 - (t0 + t1) / 2;
-        timeSource = 'internet';
-        console.log(`Time synced from ${new URL(url).hostname}. Server clock is off by ${Math.round(timeOffset / 1000)} seconds.`);
-        return;
-      }
-    } catch {}
-  }
-  timeSource = 'device';
-  console.log('WARNING: could not reach an internet time source. Using the server clock.');
-}
-syncTime();
-setInterval(syncTime, 10 * 60 * 1000).unref();
+
 
 app.get('/api/time', (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json({ now: Math.round(Date.now() + timeOffset), source: timeSource });
+  res.json({ now: Date.now(), source: 'cloudflare' });
 });
 
 // announcement photo (public, ids never repeat so it can be cached)
@@ -459,7 +462,8 @@ async function pickModel() {
     console.error('Could not list models:', e.name);
   }
 }
-if (GEMINI_API_KEY) pickModel();
+let modelReady = null;
+const ensureModel = () => (modelReady ||= (GEMINI_API_KEY ? pickModel() : Promise.resolve()));
 
 const CHAT_SYSTEM = `You are the virtual assistant on the official website of Barangay Zapatera, Cebu City, Philippines.
 Many residents do not know what to ask or which service they need. Your job is to guide them step by step.
@@ -535,6 +539,7 @@ const chatSystem = async () => {
 
 app.post('/api/chat', limit(20, 10), h(async (req, res) => {
   if (!GEMINI_API_KEY) return res.status(503).json({ error: 'The assistant is not available right now.' });
+  await ensureModel();
 
   const msgs = (Array.isArray(req.body?.messages) ? req.body.messages : [])
     .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
@@ -683,7 +688,7 @@ app.post('/api/auth/login', limit(30, 15), h(async (req, res) => {
   const username = clean(req.body?.username, 30).toLowerCase();
   const password = String(req.body?.password ?? '');
   const u = await get(`SELECT ${USER_COLS}, password_hash FROM users WHERE username = ?`, [username]);
-  const good = verifyPw(password, u ? u.password_hash : DUMMY);
+  const good = verifyPw(password, u ? u.password_hash : (DUMMY ||= hashPw('not-a-real-password')));
   if (!u || !good || !u.active) return res.status(401).json({ error: 'Wrong username or password.' });
   await startSession(res, u.id);
   res.json({ user: me(u) });
@@ -1146,25 +1151,16 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong on the server.' });
 });
 
-// ---------- Start ----------
-async function start() {
+// ---------- Start (runs once when the Worker wakes up) ----------
+async function boot() {
   await client.executeMultiple(SCHEMA);
   await run('DELETE FROM sessions WHERE expires_at < ?', [Date.now()]);
-  setInterval(() => run('DELETE FROM sessions WHERE expires_at < ?', [Date.now()]).catch(() => {}), 60 * 60 * 1000).unref();
-
-  // first run: create the starting admin from the environment settings
   const n = (await get('SELECT COUNT(*) AS n FROM users')).n;
   if (n === 0) {
-    if (!ADMIN_PASSWORD) {
-      console.error('No accounts yet. Set ADMIN_PASSWORD in the environment settings to create the first admin, then restart.');
-      process.exit(1);
-    }
+    if (!ADMIN_PASSWORD) throw new Error('No accounts yet. Set ADMIN_PASSWORD to create the first admin.');
     await run('INSERT INTO users (username, full_name, position, role, password_hash, must_change) VALUES (?, ?, ?, ?, ?, 1)',
       [ADMIN_USERNAME.toLowerCase(), 'Administrator', 'Administrator', 'admin', hashPw(ADMIN_PASSWORD)]);
-    console.log(`First admin created. Username: ${ADMIN_USERNAME.toLowerCase()} (you will be asked to change the password at first login)`);
   }
-
-  app.listen(PORT, () => console.log(`Barangay Zapatera site running on port ${PORT}`));
 }
 
-start().catch(e => { console.error('Could not start:', e); process.exit(1); });
+module.exports = app;
