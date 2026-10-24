@@ -1,0 +1,9 @@
+{
+  "name": "zapatera",
+  "main": "worker.js",
+  "compatibility_date": "2025-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "directory": "./public" },
+  "vars": { "NODE_ENV": "production" },
+  "alias": { "iconv-lite": "./iconv-stub.js" }
+}

@@ -382,6 +382,55 @@ footer a:hover{text-decoration:underline}
 @keyframes cwPop{0%{transform:scale(.4);opacity:0}100%{transform:none;opacity:1}}
 @keyframes cwMsg{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @media(max-width:480px){#cwb span{display:none}#cwb{padding:0 14px}}
+
+/* ===== NEW: language switch ===== */
+.langsel{width:auto;padding:3px 12px;border:1px solid rgba(255,255,255,.45);border-radius:99px;background:transparent;color:#fff;font:600 .8rem var(--body);cursor:pointer}
+.langsel option{color:#141a2b;background:#fff}
+
+/* ===== NEW: statistics band ===== */
+.statband{background:var(--brand);color:#fff;padding:46px 0;border-top:4px solid var(--accent)}
+.statband .wrap{display:grid;gap:22px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));text-align:center}
+.statband strong{display:block;font:800 2.7rem/1.1 var(--head);font-variant-numeric:tabular-nums}
+.statband span{opacity:.85;font-size:.92rem}
+
+/* ===== NEW: events calendar ===== */
+.cal{display:grid;gap:22px;grid-template-columns:1fr 1fr;align-items:start}
+@media(max-width:820px){.cal{grid-template-columns:1fr}}
+.calbox,.calside{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px}
+.calhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.calhead b{font:800 1.1rem var(--head)}
+.calhead button{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--alt);color:var(--ink);font-size:1.3rem;line-height:1;cursor:pointer}
+.calhead button:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.cgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cgrid.dow span{text-align:center;font-size:.74rem;font-weight:700;color:var(--muted);padding:6px 0}
+.cday{position:relative;aspect-ratio:1;border:0;border-radius:10px;background:transparent;color:var(--ink);font:500 .92rem var(--body);cursor:pointer}
+.cday:hover{background:var(--alt)}
+.cday.today{box-shadow:inset 0 0 0 2px var(--link)}
+.cday.has{font-weight:700}
+.cday.has::after{content:"";position:absolute;left:50%;bottom:6px;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:var(--accent)}
+.cday.sel{background:var(--accent);color:#fff}
+.cday.sel::after{background:#fff}
+.cday.blank{pointer-events:none}
+.calside h3{font-size:1.1rem;margin-bottom:12px}
+.evc{border-left:4px solid var(--accent);background:var(--alt);border-radius:8px;padding:12px 14px;margin-bottom:10px}
+.evc p{margin:6px 0 0;font-size:.92rem;color:var(--muted)}
+.em{color:var(--muted);font-size:.88rem}
+.calside .btn{margin-top:6px}
+
+/* ===== NEW: photo gallery ===== */
+.gal{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+.gal button{padding:0;border:0;background:none;border-radius:12px;overflow:hidden;cursor:zoom-in;display:block}
+.gal img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;border:1px solid var(--line);border-radius:12px;transition:transform .3s}
+.gal button:hover img{transform:scale(1.05)}
+#gl{border:0;padding:0;border-radius:16px;width:min(900px,calc(100% - 24px));max-height:92vh;background:#0b0d1c;color:#fff;overflow:hidden;position:relative}
+#gl[open]{display:flex;flex-direction:column;animation:ndIn .3s ease}
+#gl::backdrop{background:rgba(10,12,30,.8);backdrop-filter:blur(4px)}
+#gl img{width:100%;max-height:74vh;object-fit:contain;display:block;background:#000}
+.gl-x{position:absolute;top:10px;right:10px;width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.45);background:rgba(15,12,60,.55);color:#fff;font-size:1.4rem;line-height:1;cursor:pointer}
+.gl-x:hover{background:var(--accent)}
+.gl-f{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 16px;font-size:.88rem}
+.gl-f button{border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;padding:7px 14px;border-radius:99px;font:600 .85rem var(--body);cursor:pointer}
+.gl-f button:hover{background:var(--accent);border-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -399,6 +448,11 @@ footer a:hover{text-decoration:underline}
   <span>Official website of Barangay Zapatera, City of Cebu</span>
   <div class="sr">
     <span id="clock"></span>
+    <select id="langSel" class="langsel" aria-label="Language">
+      <option value="en">English</option>
+      <option value="bis">Bisaya</option>
+      <option value="tl">Tagalog</option>
+    </select>
     <button type="button" class="tsw" role="switch" aria-checked="false" aria-label="Dark mode"><span class="trk"></span><span>Dark mode</span></button>
     <a class="staff" id="staffLink" href="/admin.html">
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
@@ -408,7 +462,7 @@ footer a:hover{text-decoration:underline}
 </div></div>
 <header><div class="wrap bar">
   <a class="brand" href="#top" aria-label="Barangay Zapatera home"><span class="seal" role="img" aria-label="Barangay Zapatera official seal"></span><span><b>Barangay Zapatera</b><small>Cebu City</small></span></a>
-  <nav aria-label="Main"><a href="#about">About</a><a href="#services">Services</a><a href="#news">News</a><a href="#officials">Officials</a><a href="#contact">Contact</a><a class="cta" href="#process">Request a document</a></nav>
+  <nav aria-label="Main"><a href="#about">About</a><a href="#services">Services</a><a href="#news">News</a><a href="#events">Events</a><a href="#gallery">Gallery</a><a href="#officials">Officials</a><a href="#contact">Contact</a><a class="cta" href="#process">Request a document</a></nav>
 </div></header>
 
 <main id="top">
@@ -473,12 +527,42 @@ footer a:hover{text-decoration:underline}
   </div>
 </div></section>
 
+<!-- NEW: statistics band -->
+<div class="statband"><div class="wrap">
+  <div><strong id="sv-svc">0</strong><span>Services offered</span></div>
+  <div><strong id="sv-off">0</strong><span>Barangay officials</span></div>
+  <div><strong id="sv-ann">0</strong><span>Announcements posted</span></div>
+  <div><strong id="sv-evt">0</strong><span>Upcoming events</span></div>
+</div></div>
+
 <section id="news" class="alt"><div class="wrap">
   <div class="head"><h2>News and announcements</h2><p>Notices, schedules, and updates from the barangay.</p></div>
   <div class="news" id="news-box">
     <article class="lead"><span class="dt">[Date]</span><h3>[Featured announcement title]</h3><p>[Short summary of the most important current announcement.]</p></article>
     <div class="feed"><article><span class="dt">[Date]</span><h3>[Announcement title]</h3></article></div>
   </div>
+</div></section>
+
+<!-- NEW: events calendar and gallery -->
+<section id="events"><div class="wrap">
+  <div class="head"><h2>Events calendar</h2><p>A dot marks a day with an event posted by the Barangay Hall.</p></div>
+  <div class="cal">
+    <div class="calbox">
+      <div class="calhead">
+        <button type="button" id="calPrev" aria-label="Previous month">&lsaquo;</button>
+        <b id="calTitle"></b>
+        <button type="button" id="calNext" aria-label="Next month">&rsaquo;</button>
+      </div>
+      <div class="cgrid dow"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+      <div class="cgrid" id="calGrid"></div>
+    </div>
+    <div class="calside" id="calList" aria-live="polite"></div>
+  </div>
+</div></section>
+
+<section id="gallery" class="alt"><div class="wrap">
+  <div class="head"><h2>Photo gallery</h2><p>Photos from recent barangay announcements.</p></div>
+  <div class="gal" id="galGrid"></div>
 </div></section>
 
 <section id="officials"><div class="wrap">
@@ -559,7 +643,7 @@ footer a:hover{text-decoration:underline}
 </div></footer>
 
 <script>
-/* landing page text saved by the Admin and Secretary (edit at /edit-site.html) */
+/* landing page text saved by the Admin and Secretary (edit in the staff portal, Barangay Info tab) */
 (async function(){
   var MAP={
     hero_title:['.hero h1'],
@@ -670,6 +754,13 @@ footer a:hover{text-decoration:underline}
     <span id="odc"></span>
     <button type="button" id="odnx">Next &rsaquo;</button>
   </div>
+</dialog>
+
+<!-- NEW: gallery photo viewer -->
+<dialog id="gl" aria-label="Photo viewer">
+  <button type="button" class="gl-x" id="glx" aria-label="Close">&times;</button>
+  <img id="gli" alt="">
+  <div class="gl-f"><button type="button" id="glp">&lsaquo; Previous</button><span id="glc"></span><button type="button" id="gln">Next &rsaquo;</button></div>
 </dialog>
 
 <button type="button" id="cwb" aria-label="Ask the virtual assistant" aria-expanded="false">
@@ -1210,6 +1301,224 @@ var HOURS={days:[1,2,3,4,5],open:8,close:17};
   }
   send.onclick=function(){ask()};
   inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();ask()}});
+})();
+</script>
+
+<script>
+/* ===== NEW: language switch, counters, events calendar, gallery (display only, uses existing public APIs) ===== */
+(function(){
+  var $=function(i){return document.getElementById(i)};
+  var mk=function(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
+  var pad=function(n){return (n<10?'0':'')+n};
+
+  /* ---------- language switch ---------- */
+  /* [selector, English, Bisaya, Tagalog]. A leading ^ means "the parent of this element" */
+  var T=[
+    ['.strip .wrap > span','Official website of Barangay Zapatera, City of Cebu','Opisyal nga website sa Barangay Zapatera, Dakbayan sa Sugbo','Opisyal na website ng Barangay Zapatera, Lungsod ng Cebu'],
+    ['nav a[href="#about"]','About','Mahitungod','Tungkol'],
+    ['nav a[href="#services"]','Services','Mga Serbisyo','Mga Serbisyo'],
+    ['nav a[href="#news"]','News','Balita','Balita'],
+    ['nav a[href="#events"]','Events','Mga Kalihokan','Mga Kaganapan'],
+    ['nav a[href="#gallery"]','Gallery','Galeriya','Galeriya'],
+    ['nav a[href="#officials"]','Officials','Mga Opisyal','Mga Opisyal'],
+    ['nav a[href="#contact"]','Contact','Kontak','Makipag-ugnayan'],
+    ['nav a.cta','Request a document','Mangayo og dokumento','Humiling ng dokumento'],
+    ['.hero .acts .red','Request a document','Mangayo og dokumento','Humiling ng dokumento'],
+    ['.hero .acts .line','Contact the Hall','Kontaka ang Hall','Kontakin ang Hall'],
+    ['.hours dl div:nth-child(1) dt','Open','Bukas','Bukas'],
+    ['.hours dl div:nth-child(2) dt','Hours','Oras','Oras'],
+    ['.hours dl div:nth-child(3) dt','Location','Lokasyon','Lokasyon'],
+    ['.pillar:nth-child(1) h3','Documents','Mga Dokumento','Mga Dokumento'],
+    ['.pillar:nth-child(1) p','Clearances and certificates processed at the Barangay Hall.','Mga clearance ug sertipiko nga giproseso sa Barangay Hall.','Mga clearance at sertipiko na pinoproseso sa Barangay Hall.'],
+    ['.pillar:nth-child(2) h3','Peace and order','Kalinaw ug kahusay','Kapayapaan at kaayusan'],
+    ['.pillar:nth-child(2) p','Tanod patrols, mediation, and community safety.','Mga patrol sa tanod, medyasyon, ug kaluwasan sa komunidad.','Mga patrol ng tanod, pamamagitan, at kaligtasan ng komunidad.'],
+    ['.pillar:nth-child(3) h3','Health and welfare','Panglawas ug kaayohan','Kalusugan at kapakanan'],
+    ['.pillar:nth-child(3) p','Health center programs and assistance for residents in need.','Mga programa sa health center ug tabang alang sa mga residenteng nanginahanglan.','Mga programa ng health center at tulong para sa mga residenteng nangangailangan.'],
+    ['#about .head h2','About Barangay Zapatera','Mahitungod sa Barangay Zapatera','Tungkol sa Barangay Zapatera'],
+    ['.mv div:nth-child(1) h3','Mission','Misyon','Misyon'],
+    ['.mv div:nth-child(2) h3','Vision','Bisyon','Bisyon'],
+    ['#services .head h2','Services','Mga Serbisyo','Mga Serbisyo'],
+    ['#services .head p','What to bring for the most requested documents and services.','Unsay dad-on para sa labing gihangyo nga dokumento ug serbisyo.','Ano ang dadalhin para sa mga pinakamadalas hilingin na dokumento at serbisyo.'],
+    ['#services .fine','Requirements and fees may change. Please confirm with the Barangay Hall before you visit.','Mahimong mausab ang mga rekisitos ug bayranan. Palihug kumpirmaha sa Barangay Hall sa dili pa mobisita.','Maaaring magbago ang mga requirement at bayarin. Pakikumpirma sa Barangay Hall bago pumunta.'],
+    ['#process .head h2','How to request a document','Unsaon pagpangayo og dokumento','Paano humiling ng dokumento'],
+    ['#sv-svc + span','Services offered','Mga serbisyo nga gihatag','Mga serbisyong iniaalok'],
+    ['#sv-off + span','Barangay officials','Mga opisyal sa barangay','Mga opisyal ng barangay'],
+    ['#sv-ann + span','Announcements posted','Mga pahibalo nga gipost','Mga anunsyong nai-post'],
+    ['#sv-evt + span','Upcoming events','Umaabot nga mga kalihokan','Mga paparating na kaganapan'],
+    ['#news .head h2','News and announcements','Balita ug mga pahibalo','Balita at mga anunsyo'],
+    ['#news .head p','Notices, schedules, and updates from the barangay.','Mga pahibalo, iskedyul, ug updates gikan sa barangay.','Mga abiso, iskedyul, at update mula sa barangay.'],
+    ['#events .head h2','Events calendar','Kalendaryo sa mga kalihokan','Kalendaryo ng mga kaganapan'],
+    ['#events .head p','A dot marks a day with an event posted by the Barangay Hall.','Ang tuldok nagpasabot nga adunay kalihokan nga gipost sa Barangay Hall.','Ang tuldok ay nangangahulugang may kaganapang inilathala ng Barangay Hall.'],
+    ['#gallery .head h2','Photo gallery','Galeriya sa litrato','Galeriya ng larawan'],
+    ['#gallery .head p','Photos from recent barangay announcements.','Mga litrato gikan sa bag-ong mga pahibalo sa barangay.','Mga larawan mula sa mga kamakailang anunsyo ng barangay.'],
+    ['#officials .head h2','Barangay officials','Mga opisyal sa barangay','Mga opisyal ng barangay'],
+    ['#officials .head p','Your elected leaders and staff.','Imong mga napili nga lider ug kawani.','Ang inyong mga halal na lider at kawani.'],
+    ['#emergency .head h2','Emergency hotlines','Mga hotline sa emerhensya','Mga hotline para sa emergency'],
+    ['#emergency .head p','Save these numbers. Call 911 first in any life-threatening situation.','I-save kini nga mga numero. Tawag una sa 911 kung peligro ang kinabuhi.','I-save ang mga numerong ito. Tumawag muna sa 911 kung nanganganib ang buhay.'],
+    ['.hot div:nth-child(1) span','National emergency hotline','Nasudnong hotline sa emerhensya','Pambansang emergency hotline'],
+    ['.band h2','Have a concern or request?','Aduna kay kabalaka o hangyo?','May alalahanin o kahilingan?'],
+    ['.band p','Send us a message and we will reply during office hours.','Padad-i mi og mensahe ug motubag mi sa oras sa opisina.','Magpadala ng mensahe at sasagot kami sa oras ng opisina.'],
+    ['.band .btn','Send a message','Magpadala og mensahe','Magpadala ng mensahe'],
+    ['#track .head h2','Check your request','Susiha ang imong hangyo','Suriin ang iyong kahilingan'],
+    ['#track .head p','Enter the reference number you received after sending your message.','Ibutang ang reference number nga imong nadawat human sa pagpadala sa mensahe.','Ilagay ang reference number na natanggap mo matapos magpadala ng mensahe.'],
+    ['#tb','Check status','Susiha ang kahimtang','Tingnan ang katayuan'],
+    ['#contact .contact > div:nth-child(1) .head h2','Visit us','Bisitaha mi','Bisitahin kami'],
+    ['#contact .contact > div:nth-child(1) .head p','Drop by the Hall during office hours.','Duaw sa Hall sa oras sa opisina.','Dumaan sa Hall sa oras ng opisina.'],
+    ['#contact tr:nth-child(1) th','Address','Adres','Address'],
+    ['#contact tr:nth-child(2) th','Office hours','Oras sa opisina','Oras ng opisina'],
+    ['#contact tr:nth-child(3) th','Phone','Telepono','Telepono'],
+    ['#contact .contact > div:nth-child(2) .head h2','Send a message','Magpadala og mensahe','Magpadala ng mensahe'],
+    ['#contact .contact > div:nth-child(2) .head p','Fill in the form and the Hall will get back to you.','Pun-a ang porma ug motubag ang Hall kanimo.','Punan ang form at sasagot ang Hall sa iyo.'],
+    ['^#f input[name="n"]','Full name','Tibuok nga ngalan','Buong pangalan'],
+    ['^#f input[name="c"]','Phone or email','Telepono o email','Telepono o email'],
+    ['^#f select[name="t"]','Topic','Hilisgutan','Paksa'],
+    ['^#f textarea[name="m"]','Message','Mensahe','Mensahe'],
+    ['#sb','Send message','Ipadala ang mensahe','Ipadala ang mensahe'],
+    ['.fg > div:nth-child(2) h4','Explore','Susiha','Tuklasin'],
+    ['.fg > div:nth-child(3) h4','Help','Tabang','Tulong'],
+    ['.fg > div:nth-child(4) h4','Reach us','Kontaka mi','Abutin kami'],
+    ['#cwb span','Ask us','Pangutana','Magtanong'],
+    ['.cwh b','Barangay Assistant','Katabang sa Barangay','Katulong ng Barangay']
+  ];
+  var IDX={en:1,bis:2,tl:3},HTMLLANG={en:'en',bis:'ceb',tl:'fil'};
+  function node(sel){
+    if(sel.charAt(0)==='^'){var e=document.querySelector(sel.slice(1));return e&&e.parentElement}
+    return document.querySelector(sel);
+  }
+  function setText(el,t){
+    var n=[].slice.call(el.childNodes).filter(function(c){return c.nodeType===3&&c.nodeValue.trim()})[0];
+    if(n)n.nodeValue=t;else el.textContent=t;
+  }
+  function applyLang(l){
+    T.forEach(function(r){var el=node(r[0]);if(el)setText(el,r[IDX[l]])});
+    document.documentElement.lang=HTMLLANG[l];
+    try{localStorage.setItem('lang',l)}catch(e){}
+  }
+  var langSel=$('langSel'),saved='en';
+  try{saved=localStorage.getItem('lang')||'en'}catch(e){}
+  if(!IDX[saved])saved='en';
+  langSel.value=saved;
+  langSel.addEventListener('change',function(){applyLang(langSel.value)});
+  if(saved!=='en')applyLang(saved);
+
+  /* ---------- data features ---------- */
+  var today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Manila'});
+  var evDate=function(s){var p=s.split('-');return new Date(+p[0],+p[1]-1,+p[2]).toLocaleDateString('en-PH',{weekday:'long',year:'numeric',month:'long',day:'numeric'})};
+  var t12=function(t){var p=t.split(':'),h=+p[0];return ((h+11)%12+1)+':'+p[1]+' '+(h>=12?'PM':'AM')};
+  var evWhen=function(a){return a.event_time?t12(a.event_time)+(a.event_end?' to '+t12(a.event_end):''):''};
+  var get=function(u){return fetch(u,{cache:'no-store'}).then(function(r){return r.json()}).catch(function(){return null})};
+
+  function countUp(el,to){
+    if(!to||(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)){el.textContent=to;return}
+    var t0=performance.now();
+    (function f(t){
+      var p=Math.min(1,(t-t0)/900);
+      el.textContent=Math.round(to*(1-Math.pow(1-p,3)));
+      if(p<1)requestAnimationFrame(f);
+    })(t0);
+  }
+
+  (async function(){
+    var res=await Promise.all([get('/api/announcements'),get('/api/officials'),get('/api/services')]);
+    var ann=Array.isArray(res[0])?res[0]:[];
+    var offs=Array.isArray(res[1])?res[1]:[];
+    var svc=res[2]&&Array.isArray(res[2].services)?res[2].services:[];
+
+    /* events */
+    var ev={},up=[];
+    ann.forEach(function(a){
+      if(!a.event_date)return;
+      (ev[a.event_date]=ev[a.event_date]||[]).push(a);
+      if(a.event_date>=today)up.push(a);
+    });
+    up.sort(function(a,b){return a.event_date<b.event_date?-1:a.event_date>b.event_date?1:0});
+
+    /* counters */
+    var vals=[['sv-svc',svc.length],['sv-off',offs.length],['sv-ann',ann.length],['sv-evt',up.length]];
+    var band=document.querySelector('.statband');
+    function run(){vals.forEach(function(v){countUp($(v[0]),v[1])})}
+    if('IntersectionObserver' in window){
+      var sio=new IntersectionObserver(function(es){
+        if(es[0].isIntersecting){run();sio.disconnect()}
+      },{threshold:.4});
+      sio.observe(band);
+    }else run();
+
+    /* calendar */
+    var tp=today.split('-'),y=+tp[0],m=+tp[1]-1,selDay=null,prefix=today.slice(0,7);
+    var hasThisMonth=Object.keys(ev).some(function(k){return k.slice(0,7)===prefix});
+    if(up.length&&!hasThisMonth){var f0=up[0].event_date.split('-');y=+f0[0];m=+f0[1]-1}
+
+    function list(){
+      var box=$('calList');box.replaceChildren();
+      var items=selDay?(ev[selDay]||[]):up.slice(0,4);
+      box.append(mk('h3','',selDay?evDate(selDay):'Upcoming events'));
+      if(!items.length){box.append(mk('p','em',selDay?'No event on this day.':'No upcoming events posted yet.'));return}
+      items.forEach(function(a){
+        var c=mk('div','evc');
+        c.append(mk('b','',a.title));
+        var bits=[];
+        if(!selDay)bits.push(evDate(a.event_date));
+        var w=evWhen(a);if(w)bits.push(w);
+        if(a.venue)bits.push(a.venue);
+        if(bits.length)c.append(mk('div','em',bits.join(' | ')));
+        if(a.body)c.append(mk('p','',a.body.length>140?a.body.slice(0,140)+'...':a.body));
+        box.append(c);
+      });
+      var more=mk('a','btn red','Read the news');more.href='#news';box.append(more);
+    }
+    function render(){
+      $('calTitle').textContent=new Date(y,m,1).toLocaleDateString('en-PH',{month:'long',year:'numeric'});
+      var g=$('calGrid');g.replaceChildren();
+      var blanks=new Date(y,m,1).getDay(),days=new Date(y,m+1,0).getDate();
+      for(var i=0;i<blanks;i++)g.append(mk('span','cday blank'));
+      for(var d=1;d<=days;d++){
+        (function(d){
+          var key=y+'-'+pad(m+1)+'-'+pad(d);
+          var b=mk('button','cday',d);b.type='button';
+          if(ev[key]){b.classList.add('has');b.setAttribute('aria-label',d+', '+ev[key].length+' event(s)')}
+          if(key===today)b.classList.add('today');
+          if(key===selDay)b.classList.add('sel');
+          b.onclick=function(){selDay=(selDay===key)?null:key;render()};
+          g.append(b);
+        })(d);
+      }
+      list();
+    }
+    $('calPrev').onclick=function(){m--;if(m<0){m=11;y--}render()};
+    $('calNext').onclick=function(){m++;if(m>11){m=0;y++}render()};
+    render();
+
+    /* gallery */
+    var photos=[];
+    ann.forEach(function(a){(a.photos||[]).forEach(function(u){photos.push({u:u,t:a.title})})});
+    photos=photos.slice(0,12);
+    var grid=$('galGrid');
+    if(!photos.length){
+      grid.append(mk('p','em','No photos yet. Photos added to announcements will appear here.'));
+    }else{
+      var gl=$('gl'),gi=0;
+      var show=function(i){
+        gi=(i+photos.length)%photos.length;
+        $('gli').src=photos[gi].u;$('gli').alt=photos[gi].t;
+        $('glc').textContent=photos[gi].t+' ('+(gi+1)+' of '+photos.length+')';
+        if(!gl.open)gl.showModal();
+      };
+      photos.forEach(function(p,i){
+        var b=mk('button');b.type='button';b.setAttribute('aria-label','Open photo: '+p.t);
+        var im=document.createElement('img');im.src=p.u;im.alt=p.t;im.loading='lazy';
+        b.append(im);b.onclick=function(){show(i)};grid.append(b);
+      });
+      $('glx').onclick=function(){gl.close()};
+      $('glp').onclick=function(){show(gi-1)};
+      $('gln').onclick=function(){show(gi+1)};
+      gl.addEventListener('click',function(e){if(e.target===gl)gl.close()});
+      gl.addEventListener('keydown',function(e){
+        if(e.key==='ArrowRight')show(gi+1);
+        if(e.key==='ArrowLeft')show(gi-1);
+      });
+    }
+  })();
 })();
 </script>
 </body>
