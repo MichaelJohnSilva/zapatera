@@ -1104,8 +1104,9 @@ async function loadUsers() {
       el('td', { textContent: u.username }),
       contact,
       el('td', {}, el('span', { className: 'badge ' + (u.active ? 'on' : 'off'), textContent: u.active ? 'active' : 'disabled' })),
-      el('td', {}, el('div', { className: 'acts' }, edit, reset, tog))));
-  });
+      el('td', {}, (u.position === 'Administrator' && user.position !== 'Administrator')
+        ? el('span', { className: 'meta', textContent: 'Protected account' })
+        : el('div', { className: 'acts' }, edit, reset, tog))));  });
   const head = el('thead', {}, el('tr', {}, ...['Name', 'Position', 'Username', 'Contact', 'Status', 'Actions'].map(t => el('th', { textContent: t }))));
   $('ulist').replaceChildren(el('div', { className: 'tbl' }, el('table', {}, head, tb)));
 }

@@ -10,8 +10,7 @@ const {
 } = process.env;
 
 if (!TURSO_DATABASE_URL) {
-  console.error('TURSO_DATABASE_URL is not set. Add it (and TURSO_AUTH_TOKEN) in the Render Environment settings.');
-  process.exit(1);
+  console.error('TURSO_DATABASE_URL is not set. Add it (and TURSO_AUTH_TOKEN) in the Cloudflare Variables and Secrets settings, or in .env / .dev.vars for local runs.');  process.exit(1);
 }
 
 // ---------- Database (Turso) ----------
@@ -967,6 +966,11 @@ app.patch('/api/admin/users/:id', auth, ready, can('admin'), h(async (req, res) 
   const id = idParam(req);
   const target = await get('SELECT id, position, role, active FROM users WHERE id = ?', [id]);
   if (!target) return res.status(404).json({ error: 'Account not found.' });
+
+  // the Administrator account is protected: only the Administrator can change it
+  if (target.position === 'Administrator' && req.user.position !== 'Administrator') {
+    return res.status(403).json({ error: 'Only the Administrator can change the Administrator account.' });
+  }
 
   if (typeof req.body?.active === 'boolean') {
     if (!req.body.active) {
