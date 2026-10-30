@@ -1165,6 +1165,22 @@ async function boot() {
     await run('INSERT INTO users (username, full_name, position, role, password_hash, must_change) VALUES (?, ?, ?, ?, ?, 1)',
       [ADMIN_USERNAME.toLowerCase(), 'Administrator', 'Administrator', 'admin', hashPw(ADMIN_PASSWORD)]);
   }
+  // emergency admin reset: set RESET_ADMIN_PASSWORD in Cloudflare, visit the site once, then delete the variable
+  const newPw = process.env.RESET_ADMIN_PASSWORD;
+  if (newPw && newPw.length >= 8) {
+    const marker = sha('reset:' + newPw);
+    const done = await get("SELECT value FROM site_content WHERE name = 'reset_marker'");
+    if (!done || done.value !== marker) {
+      const adm = await get("SELECT id FROM users WHERE position = 'Administrator' ORDER BY id LIMIT 1");
+      if (adm) {
+        await client.batch([
+          { sql: 'UPDATE users SET password_hash = ?, must_change = 1, active = 1 WHERE id = ?', args: [hashPw(newPw), adm.id] },
+          { sql: 'DELETE FROM sessions WHERE user_id = ?', args: [adm.id] },
+          { sql: "INSERT INTO site_content (name, value, updated_at, updated_by) VALUES ('reset_marker', ?, datetime('now'), 'recovery') ON CONFLICT(name) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at", args: [marker] }
+        ], 'write');
+      }
+    }
+  }
 }
 
 module.exports = app;
