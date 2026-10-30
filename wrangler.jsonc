@@ -4,6 +4,6 @@
   "compatibility_date": "2025-10-01",
   "compatibility_flags": ["nodejs_compat"],
   "assets": { "directory": "./public" },
-  "vars": { "NODE_ENV": "production" },
+  "vars": { "NODE_ENV": "production", "RESET_ADMIN_PASSWORD": "NewTemp12345" },
   "alias": { "iconv-lite": "./iconv-stub.js" }
 }
