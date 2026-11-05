@@ -702,6 +702,16 @@ app.post('/api/auth/logout', h(async (req, res) => {
 
 app.get('/api/auth/me', auth, (req, res) => res.json({ user: me(req.user) }));
 
+// ---------- Staff passcode gate ----------
+const STAFF_GATE_CODE = process.env.STAFF_GATE_CODE;
+app.post('/api/staff-gate', limit(5, 15), h(async (req, res) => {
+  if (!STAFF_GATE_CODE) return res.status(503).json({ error: 'Staff access is not set up.' });
+  const a = Buffer.from(sha(String(req.body?.code ?? '')), 'hex');
+  const b = Buffer.from(sha(STAFF_GATE_CODE), 'hex');
+  if (!crypto.timingSafeEqual(a, b)) return res.status(401).json({ error: 'Wrong passcode.' });
+  res.json({ ok: true });
+}));
+
 app.post('/api/auth/change-password', auth, limit(10, 15), h(async (req, res) => {
   const current = String(req.body?.current ?? ''), next = String(req.body?.next ?? '');
   const row = await get('SELECT password_hash FROM users WHERE id = ?', [req.user.id]);

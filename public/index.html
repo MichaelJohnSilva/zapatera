@@ -39,6 +39,13 @@
   .wrap{max-width:1160px;margin:0 auto;padding:0 22px}
   svg.i{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 
+  .staff[hidden]{display:none}
+  #sg{border:0;border-radius:16px;padding:26px;width:min(380px,calc(100% - 32px));background:var(--surface);color:var(--ink);box-shadow:0 30px 80px rgba(0,0,0,.45)}
+  #sg::backdrop{background:rgba(10,12,30,.7);backdrop-filter:blur(3px)}
+  #sg h3{font-size:1.25rem;margin-bottom:4px}
+  #sge{color:var(--accent);font-size:.9rem;min-height:1.2em}
+  #sg .btn.cancel{background:transparent;border-color:var(--line);color:var(--ink)}
+
   /* scroll progress */
   #prog{position:fixed;top:0;left:0;height:3px;width:100%;background:var(--accent);transform:scaleX(0);transform-origin:left;z-index:60}
 
@@ -454,7 +461,7 @@
       <option value="tl">Tagalog</option>
     </select>
     <button type="button" class="tsw" role="switch" aria-checked="false" aria-label="Dark mode"><span class="trk"></span><span>Dark mode</span></button>
-    <a class="staff" id="staffLink" href="/admin.html">
+    <a class="staff" id="staffLink" href="/admin.html" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
       <span id="staffText">Staff login</span>
     </a>
@@ -636,8 +643,8 @@
   <div class="fg">
     <div><div class="seal" role="img" aria-label="Official seal"></div><h4>Barangay Zapatera</h4><p>Barangay Hall, Zapatera, Cebu City, Philippines</p></div>
     <div><h4>Explore</h4><a href="#about">About</a><a href="#services">Services</a><a href="#news">News</a></div>
-    <div><h4>Help</h4><a href="#process">Request a document</a><a href="#track">Check your request</a><a href="#emergency">Hotlines</a><a href="#contact">Contact</a><a href="/admin.html">Staff portal</a></div>
-    <div><h4>Reach us</h4><p>[Phone]</p><p>[Email]</p><p>[Facebook page]</p></div>
+    <div><h4>Help</h4><a href="#process">Request a document</a><a href="#track">Check your request</a><a href="#emergency">Hotlines</a><a href="#contact">Contact</a></div>    <div><h4>Reach us</h4><p>[Phone]</p><p>[Email]</p><p>[Facebook page]</p></div>
+    
   </div>
   <div class="copy">Official website of Barangay Zapatera. Text in [brackets] is placeholder and must be replaced with verified details.</div>
 </div></footer>
@@ -668,6 +675,36 @@
       if(!c[k])return;
       MAP[k].forEach(function(sel){var el=document.querySelector(sel);if(el)el.textContent=(PRE[k]||'')+c[k]});
     });
+
+        /* office hours: let the open/closed badge follow the saved text */
+    function parseTimes(s){
+      var m=String(s||'').match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/gi);
+      if(!m||m.length<2)return null;
+      var out=m.slice(0,2).map(function(t){
+        var p=/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i.exec(t),h=+p[1]%12;
+        if(/pm/i.test(p[3]))h+=12;
+        return h+(p[2]?+p[2]/60:0);
+      });
+      return out[1]>out[0]?out:null;
+    }
+    function parseDays(s){
+      var N=['sun','mon','tue','wed','thu','fri','sat'];
+      var f=String(s||'').toLowerCase().match(/sun|mon|tue|wed|thu|fri|sat/g);
+      if(!f||!f.length)return null;
+      var a=f.map(function(x){return N.indexOf(x)});
+      if(/\bto\b|-|\u2013/.test(s)&&a.length===2){
+        var r=[],i=a[0];
+        while(true){r.push(i);if(i===a[1])break;i=(i+1)%7}
+        return r;
+      }
+      return a;
+    }
+    var T2=parseTimes(c.hours),D2=parseDays(c.days);
+    if(window.HOURS){
+      if(T2){HOURS.open=T2[0];HOURS.close=T2[1]}
+      if(D2)HOURS.days=D2;
+    }
+
     if(c.days||c.hours){
       var d=document.querySelector('.hours dl div:nth-child(1) dd'),h=document.querySelector('.hours dl div:nth-child(2) dd');
       var row=document.querySelector('#contact table tr:nth-child(2) td');
@@ -762,6 +799,17 @@
   <img id="gli" alt="">
   <div class="gl-f"><button type="button" id="glp">&lsaquo; Previous</button><span id="glc"></span><button type="button" id="gln">Next &rsaquo;</button></div>
 </dialog>
+<dialog id="sg" aria-labelledby="sgt">
+  <form id="sgf">
+    <h3 id="sgt">Staff access</h3>
+    <label>Passcode<input type="password" id="sgp" autocomplete="off" required></label>
+    <div id="sge" role="alert"></div>
+    <div class="acts">
+      <button class="btn red" id="sgb">Continue</button>
+      <button type="button" class="btn cancel" id="sgx">Cancel</button>
+    </div>
+  </form>
+</dialog>
 
 <button type="button" id="cwb" aria-label="Ask the virtual assistant" aria-expanded="false">
   <svg class="i" viewBox="0 0 24 24" style="width:22px;height:22px"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.5A8 8 0 1 1 21 12z"/></svg><span>Ask us</span>
@@ -788,7 +836,7 @@ var HOURS={days:[1,2,3,4,5],open:8,close:17};
   var live=document.getElementById('live'),liveText=document.getElementById('liveText');
   var fmt=new Intl.DateTimeFormat('en-PH',{timeZone:TZ,weekday:'long',month:'long',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'});
   var lastBadge='',offset=0;
-  function t12(x){var hr=Math.floor(x),ap=hr>=12?'PM':'AM';return ((hr+11)%12+1)+':00 '+ap}
+  function t12(x){var hr=Math.floor(x),mn=Math.round((x-hr)*60),ap=hr>=12?'PM':'AM';return ((hr+11)%12+1)+':'+(mn<10?'0':'')+mn+' '+ap}
   function sync(){
     var t0=Date.now();
     fetch('/api/time',{cache:'no-store'}).then(function(r){return r.json()}).then(function(d){
@@ -803,10 +851,10 @@ var HOURS={days:[1,2,3,4,5],open:8,close:17};
     var d=new Date(now.toLocaleString('en-US',{timeZone:TZ}));
     var h=d.getHours()+d.getMinutes()/60;
     var isOpen=HOURS.days.indexOf(d.getDay())>-1&&h>=HOURS.open&&h<HOURS.close;
-    var state=isOpen?'open':'closed';
+    var state=(isOpen?'open':'closed')+'|'+HOURS.open+'|'+HOURS.close;
     if(state!==lastBadge){
       lastBadge=state;
-      live.className='live '+state;
+      live.className='live '+(isOpen?'open':'closed');
       liveText.textContent=isOpen?'Open now, until '+t12(HOURS.close):'Closed now';
     }
   }
@@ -854,9 +902,10 @@ var HOURS={days:[1,2,3,4,5],open:8,close:17};
   /* staff link: show "Staff dashboard" if already signed in */
   fetch('/api/auth/me').then(function(r){return r.ok?r.json():null}).then(function(d){
     if(d&&d.user){
-      document.getElementById('staffText').textContent='Staff dashboard';
-      document.getElementById('staffLink').title='Signed in as '+d.user.full_name;
-    }
+    document.getElementById('staffLink').hidden=false;
+    document.getElementById('staffText').textContent='Staff dashboard';
+    document.getElementById('staffLink').title='Signed in as '+d.user.full_name;
+  }
   }).catch(function(){});
 
   /* contact form: optional evidence photos for concern, suggestion, other */
@@ -1522,4 +1571,28 @@ var HOURS={days:[1,2,3,4,5],open:8,close:17};
 })();
 </script>
 </body>
+<script>
+(function(){
+  var dlg=document.getElementById('sg'),f=document.getElementById('sgf'),
+      p=document.getElementById('sgp'),e=document.getElementById('sge'),b=document.getElementById('sgb');
+  document.addEventListener('keydown',function(ev){
+    if(ev.ctrlKey&&ev.shiftKey&&!ev.altKey&&(ev.key==='E'||ev.key==='e')){
+      ev.preventDefault();
+      if(!dlg.open){p.value='';e.textContent='';dlg.showModal();p.focus();}
+    }
+  });
+  document.getElementById('sgx').onclick=function(){dlg.close()};
+  dlg.addEventListener('click',function(ev){if(ev.target===dlg)dlg.close()});
+  f.addEventListener('submit',async function(ev){
+    ev.preventDefault();b.disabled=true;e.textContent='';
+    try{
+      var r=await fetch('/api/staff-gate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:p.value})});
+      var d=await r.json().catch(function(){return {}});
+      if(!r.ok)throw new Error(d.error||'Wrong passcode.');
+      location.href='/admin.html';
+    }catch(err){e.textContent=err.message;p.select()}
+    b.disabled=false;
+  });
+})();
+</script>
 </html>
