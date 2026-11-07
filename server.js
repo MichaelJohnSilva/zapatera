@@ -460,6 +460,16 @@ const latestProof = id => get("SELECT id, note, created_at FROM message_log WHER
 // (no name, contact, message, or staff names)
 app.get('/api/status/:ref', limit(20, 15), h(async (req, res) => {
   const ref = clean(req.params.ref, 20).toUpperCase();
+
+  // NEW: appointment reference
+  if (/^APT-[A-Z0-9]{6}$/.test(ref)) {
+    const a = await get('SELECT ref, date, slot, status, created_at FROM appointments WHERE ref = ?', [ref]);
+    if (!a) return res.status(404).json({ error: 'Reference number not found. Check the number and try again.' });
+    res.set('Cache-Control', 'no-store');
+    return res.json({ type: 'appointment', ref: a.ref, status: a.status, date: a.date, slot: a.slot, created_at: a.created_at });
+  }
+
+  // existing code
   const m = /^ZAP-[A-Z0-9]{6}$/.test(ref)
     ? await get('SELECT id, ref, topic, status, created_at, updated_at FROM messages WHERE ref = ?', [ref])
     : null;

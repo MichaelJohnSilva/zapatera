@@ -1047,6 +1047,14 @@ async function loadMessages(useCache) {
     };
 
     const acts = el('div', { className: 'acts' }, sel, hbtn);
+    if (user.role === 'admin') {
+    const del = el('button', { className: 'btn sm d', textContent: 'Delete' });
+    del.onclick = async () => {
+      if (!confirm('Delete this message and its history?')) return;
+      try { await api('/api/admin/messages/' + m.id, 'DELETE'); loadMessages(); } catch (e) { alert(e.message); }
+    };
+    acts.append(del);
+  }
 
     /* evidence photos sent by the resident (optional) */
     const evBox = (m.evidence && m.evidence.length) ? el('div', { className: 'stack', style: 'margin:8px 0' },

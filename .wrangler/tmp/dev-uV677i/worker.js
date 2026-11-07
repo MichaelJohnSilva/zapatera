@@ -28404,6 +28404,12 @@ var require_server = __commonJS({
     var latestProof = /* @__PURE__ */ __name((id) => get("SELECT id, note, created_at FROM message_log WHERE message_id = ? AND status = 'resolved' ORDER BY id DESC LIMIT 1", [id]), "latestProof");
     app2.get("/api/status/:ref", limit(20, 15), h(async (req, res) => {
       const ref2 = clean(req.params.ref, 20).toUpperCase();
+      if (/^APT-[A-Z0-9]{6}$/.test(ref2)) {
+        const a = await get("SELECT ref, date, slot, status, created_at FROM appointments WHERE ref = ?", [ref2]);
+        if (!a) return res.status(404).json({ error: "Reference number not found. Check the number and try again." });
+        res.set("Cache-Control", "no-store");
+        return res.json({ type: "appointment", ref: a.ref, status: a.status, date: a.date, slot: a.slot, created_at: a.created_at });
+      }
       const m = /^ZAP-[A-Z0-9]{6}$/.test(ref2) ? await get("SELECT id, ref, topic, status, created_at, updated_at FROM messages WHERE ref = ?", [ref2]) : null;
       if (!m) return res.status(404).json({ error: "Reference number not found. Check the number and try again." });
       const proof = m.status === "resolved" ? await latestProof(m.id) : null;
@@ -29296,12 +29302,12 @@ Barangay Zapatera`
   }
 });
 
-// .wrangler/tmp/bundle-skYAOz/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-LVNmnF/middleware-loader.entry.ts
 init_modules_watch_stub();
 init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
 init_performance2();
 
-// .wrangler/tmp/bundle-skYAOz/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-LVNmnF/middleware-insertion-facade.js
 init_modules_watch_stub();
 init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
 init_performance2();
@@ -29368,7 +29374,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env2, _ctx, middlewareCtx
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// .wrangler/tmp/bundle-skYAOz/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-LVNmnF/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -29403,7 +29409,7 @@ function __facade_invoke__(request, env2, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// .wrangler/tmp/bundle-skYAOz/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-LVNmnF/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class ___Facade_ScheduledController__ {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;
