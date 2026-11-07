@@ -331,7 +331,6 @@ app.use((req, res, next) => (bigBody(req) || (req.method === 'PUT' && (req.path 
 // ---------- Activity log: records every successful change made by staff ----------
 const ACT_RULES = [
   ['PATCH', /^\/api\/admin\/messages\/\d+$/, b => 'Changed message status to ' + b.status],
-  ['POST', /^\/api\/admin\/messages\/\d+\/assign$/, () => 'Assigned a message'],
   ['DELETE', /^\/api\/admin\/messages\/\d+$/, () => 'Deleted a message'],
   ['POST', /^\/api\/staff\/announcements$/, () => 'Posted an announcement'],
   ['PATCH', /^\/api\/staff\/announcements\/\d+$/, () => 'Edited an announcement'],
@@ -981,27 +980,6 @@ app.delete('/api/admin/messages/:id', auth, ready, can('admin'), h(async (req, r
     { sql: 'DELETE FROM message_log WHERE message_id = ?', args: [id] },
     { sql: 'DELETE FROM messages WHERE id = ?', args: [id] }
   ], 'write');
-  res.json({ ok: true });
-}));
-
-// ---------- Assign a message, activity log, appointments (staff side) ----------
-app.get('/api/admin/staff-list', auth, ready, can('admin', 'staff'), h(async (req, res) => {
-  res.json(await all("SELECT id, full_name, position FROM users WHERE active = 1 AND role IN ('admin','staff') ORDER BY full_name"));
-}));
-
-app.post('/api/admin/messages/:id/assign', auth, ready, can('admin', 'staff'), h(async (req, res) => {
-  const id = idParam(req);
-  const msg = await get('SELECT ref FROM messages WHERE id = ?', [id]);
-  if (!msg) return res.status(404).json({ error: 'Message not found.' });
-  const uid = req.body?.user_id;
-  let assignedId = null, name = null;
-  if (uid !== null && uid !== undefined && uid !== '') {
-    const u = await get("SELECT id, full_name FROM users WHERE id = ? AND active = 1 AND role IN ('admin','staff')", [Number(uid)]);
-    if (!u) return res.status(400).json({ error: 'That person cannot be assigned.' });
-    assignedId = u.id; name = u.full_name;
-  }
-  await run('UPDATE messages SET assigned_id = ?, assigned_name = ? WHERE id = ?', [assignedId, name, id]);
-  res.locals.detail = msg.ref + (name ? ' to ' + name : ' (unassigned)');
   res.json({ ok: true });
 }));
 

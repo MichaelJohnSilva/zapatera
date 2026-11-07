@@ -420,9 +420,8 @@ footer span{opacity:.8}
           <input id="fq" type="search" placeholder="Search name, contact, reference, or message">
           <select id="fs"><option value="">All Status</option><option>new</option><option>in progress</option><option>resolved</option></select>
         </div>
-        <div class="two" style="margin-top:12px">
+        <div style="margin-top:12px">
           <select id="ft"><option value="">All topics</option><option>Request a document</option><option>Report a concern</option><option>Suggestion</option><option>Other</option></select>
-          <select id="fa"><option value="">Assigned to anyone</option><option value="me">Assigned to me</option><option value="none">Unassigned</option></select>
         </div>
         <div class="two" style="margin-top:12px">
           <label>From<input id="ff" type="date"></label>
@@ -1047,25 +1046,7 @@ async function loadMessages(useCache) {
       } catch (e) { alert(e.message); }
     };
 
-    const asg = el('select', { title: 'Assign to' });
-    asg.append(el('option', { value: '', textContent: 'Unassigned' }));
-    staffList.forEach(s => asg.append(el('option', { value: s.id, textContent: s.full_name, selected: s.id === m.assigned_id })));
-    asg.onchange = async () => {
-      try {
-        await api('/api/admin/messages/' + m.id + '/assign', 'POST', { user_id: asg.value ? Number(asg.value) : null });
-        toast(asg.value ? 'Message assigned' : 'Assignment removed');
-        loadMessages();
-      } catch (e) { alert(e.message); }
-    };
-    const acts = el('div', { className: 'acts' }, sel, asg, hbtn);
-    if (user.role === 'admin') {
-      const del = el('button', { className: 'btn sm d', textContent: 'Delete' });
-      del.onclick = async () => {
-        if (!confirm('Delete this message and its history?')) return;
-        try { await api('/api/admin/messages/' + m.id, 'DELETE'); loadMessages(); } catch (e) { alert(e.message); }
-      };
-      acts.append(del);
-    }
+    const acts = el('div', { className: 'acts' }, sel, hbtn);
 
     /* evidence photos sent by the resident (optional) */
     const evBox = (m.evidence && m.evidence.length) ? el('div', { className: 'stack', style: 'margin:8px 0' },
@@ -1076,7 +1057,7 @@ async function loadMessages(useCache) {
 
     ml.append(el('div', { className: 'card item ' + cls },
       el('div', { className: 'row' }, el('b', { textContent: m.name }), el('span', { className: 'badge ' + cls, textContent: m.status })),
-      el('div', { className: 'meta', textContent: (m.ref ? m.ref + ' | ' : '') + m.topic + ' | ' + m.contact + ' | ' + fmt(m.created_at) + (m.handled_by ? ' | handled by ' + m.handled_by : '') + (m.assigned_name ? ' | assigned to ' + m.assigned_name : '') }),
+      el('div', { className: 'meta', textContent: (m.ref ? m.ref + ' | ' : '') + m.topic + ' | ' + m.contact + ' | ' + fmt(m.created_at) + (m.handled_by ? ' | handled by ' + m.handled_by : '') }),
       el('div', { className: 'msg', textContent: m.message }),
       ...(evBox ? [evBox] : []),
       acts, panel, hist));
@@ -1424,7 +1405,6 @@ $('sf').onsubmit = async e => {
 };
 
 /* ---------- staff list, filters, sound ---------- */
-let staffList = [];
 
 const pad2 = n => String(n).padStart(2, '0');
 const localKey = s => { const d = new Date(s.replace(' ', 'T') + 'Z'); return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); };
@@ -1434,9 +1414,6 @@ function passFilter(m) {
   if (q && !(m.name + ' ' + m.contact + ' ' + (m.ref || '') + ' ' + m.message).toLowerCase().includes(q)) return false;
   if ($('fs').value && m.status !== $('fs').value) return false;
   if ($('ft').value && m.topic !== $('ft').value) return false;
-  const a = $('fa').value;
-  if (a === 'me' && m.assigned_id !== user.id) return false;
-  if (a === 'none' && m.assigned_id) return false;
   const k = localKey(m.created_at);
   if ($('ff').value && k < $('ff').value) return false;
   if ($('fto').value && k > $('fto').value) return false;
@@ -1444,12 +1421,12 @@ function passFilter(m) {
 }
 
 let fTimer;
-['fq', 'fs', 'ft', 'fa', 'ff', 'fto'].forEach(id => $(id).addEventListener('input', () => {
+['fq', 'fs', 'ft', 'ff', 'fto'].forEach(id => $(id).addEventListener('input', () => {
   clearTimeout(fTimer);
   fTimer = setTimeout(() => loadMessages(true), 200);
 }));
 $('fclear').onclick = () => {
-  ['fq', 'fs', 'ft', 'fa', 'ff', 'fto'].forEach(id => { $(id).value = ''; });
+  ['fq', 'fs', 'ft', 'ff', 'fto'].forEach(id => { $(id).value = ''; });
   loadMessages(true);
 };
 
@@ -1560,8 +1537,8 @@ async function enter(u) {
   $('stw-usr').classList.toggle('hide', u.role !== 'admin');
   tab('ann');
   await loadAnnouncements();
-  if (canMsg) { staffList = await api('/api/admin/staff-list'); await loadMessages(); loadAppointments(); startPolling(); }
-  if (u.role === 'admin') { await loadUsers(); await loadOfficials(); await loadSite(); }
+if (canMsg) { await loadMessages(); loadAppointments(); startPolling(); }  
+if (u.role === 'admin') { await loadUsers(); await loadOfficials(); await loadSite(); }
 }
 
 /* ---------- events ---------- */
