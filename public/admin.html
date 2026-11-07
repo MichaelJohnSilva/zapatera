@@ -632,8 +632,8 @@ function toast(msg, bad) {
   const t = el('div', { className: 'toast' + (bad ? ' bad' : ''), textContent: msg });
   t.setAttribute('role', 'status');
   document.body.append(t);
-  setTimeout(() => t.classList.add('out'), 2600);
-  setTimeout(() => t.remove(), 3100);
+  setTimeout(() => t.classList.add('out'), 6000);
+  setTimeout(() => t.remove(), 6500);
 }
 
 const initials = n => String(n || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
@@ -957,6 +957,8 @@ async function loadMessages() {
   const ml = $('mlist'); ml.replaceChildren();
   const nNew = msgs.filter(m => m.status === 'new').length;
   $('st-new').textContent = nNew;
+  lastMsgId = msgs.length ? Math.max(...msgs.map(m => m.id)) : 0;
+  document.title = (nNew ? '(' + nNew + ') ' : '') + 'Staff Portal | Barangay Zapatera';
   $('mcnt').textContent = nNew; $('mcnt').classList.toggle('hide', !nNew);
   if (!msgs.length) ml.append(el('div', { className: 'empty', textContent: 'No messages yet.' }));
   msgs.forEach(m => {
@@ -1325,7 +1327,7 @@ async function loadSite(keep) {
             };
             return cb;
           });
-          grid.append(el('div', { className: 'wide' }, fld('Open days', row), hid));
+          grid.append(el('div', { className: 'wide stack' }, el('b', { style: 'font-size:.9rem', textContent: 'Open days' }), row, hid));
           return;
         }
 
@@ -1374,6 +1376,26 @@ $('sf').onsubmit = async e => {
   } catch (err) { toast(err.message, true); }
   busy($('sbtn'), false);
 };
+/* ---------- live new-message alerts (checks every 3 seconds) ---------- */
+let lastMsgId = null, pollT = null;
+
+async function pollMessages() {
+  if (!user || document.hidden) return;
+  try {
+    const r = await fetch('/api/admin/messages-poll');
+    if (!r.ok) return;
+    const d = await r.json();
+    if (lastMsgId === null) { lastMsgId = d.latest; return; }
+    if (d.latest > lastMsgId) {
+      lastMsgId = d.latest;
+      toast('New message from ' + d.name + ' (' + d.topic + ')');
+      loadMessages();
+    }
+  } catch (e) {}
+}
+function startPolling() { clearInterval(pollT); pollT = setInterval(pollMessages, 3000); }
+function stopPolling() { clearInterval(pollT); pollT = null; lastMsgId = null; }
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pollMessages(); });
 
 async function enter(u) {
   user = u; forced = !!u.must_change;
@@ -1390,7 +1412,7 @@ async function enter(u) {
   $('stw-usr').classList.toggle('hide', u.role !== 'admin');
   tab('ann');
   await loadAnnouncements();
-  if (canMsg) await loadMessages();
+  if (canMsg) { await loadMessages(); startPolling(); }
   if (u.role === 'admin') { await loadUsers(); await loadOfficials(); await loadSite(); }
 }
 
@@ -1421,6 +1443,7 @@ $('pwf').onsubmit = async e => {
 $('chg').onclick = () => { $('perr').classList.remove('on'); view('pw'); };
 $('pwx').onclick = () => view('app');
 $('out').onclick = async () => {
+  stopPolling();
   await api('/api/auth/logout', 'POST').catch(() => {});
   user = null; resetAnnForm(); view('login');
 };

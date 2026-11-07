@@ -756,6 +756,14 @@ app.get('/api/staff/avatar/:id', auth, ready, h(async (req, res) => {
   sendJpeg(res, row.avatar, 'private, max-age=3600');
 }));
 
+// lightweight check used by the staff portal to detect new messages
+app.get('/api/admin/messages-poll', auth, ready, can('admin', 'staff'), h(async (req, res) => {
+  const last = await get('SELECT id, name, topic FROM messages ORDER BY id DESC LIMIT 1');
+  const n = (await get("SELECT COUNT(*) AS n FROM messages WHERE status = 'new'")).n;
+  res.set('Cache-Control', 'no-store');
+  res.json({ latest: last ? last.id : 0, name: last ? last.name : '', topic: last ? last.topic : '', new: Number(n) });
+}));
+
 // ---------- Messages (admin and kagawad) ----------
 app.get('/api/admin/messages', auth, ready, can('admin', 'staff'), h(async (req, res) => {
   const rows = await all('SELECT * FROM messages ORDER BY id DESC LIMIT 500');
