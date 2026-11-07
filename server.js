@@ -115,6 +115,7 @@ const SCHEMA = `
     announcement_id INTEGER NOT NULL,
     data BLOB NOT NULL
   );
+
   CREATE INDEX IF NOT EXISTS idx_news_photos ON announcement_photos(announcement_id);
   CREATE TABLE IF NOT EXISTS officials (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -131,6 +132,27 @@ const SCHEMA = `
     updated_at TEXT,
     updated_by TEXT
   );
+    CREATE TABLE IF NOT EXISTS activity_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    user_name TEXT NOT NULL,
+    action TEXT NOT NULL,
+    detail TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS appointments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ref TEXT UNIQUE,
+    name TEXT NOT NULL,
+    contact TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    date TEXT NOT NULL,
+    slot TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'booked',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_appt_date ON appointments(date, slot);
+
 `;
 
 // reference numbers so residents can check their request
@@ -306,9 +328,42 @@ const bigBody = req =>
   (req.method === 'POST' && (req.path === '/api/staff/announcements' || req.path === '/api/admin/officials' || req.path === '/api/messages'));
 app.use((req, res, next) => (bigBody(req) || (req.method === 'PUT' && (req.path === '/api/admin/content' || req.path === '/api/admin/services'))) ? next() : express.json({ limit: '20kb' })(req, res, next));
 
+// ---------- Activity log: records every successful change made by staff ----------
+const ACT_RULES = [
+  ['PATCH', /^\/api\/admin\/messages\/\d+$/, b => 'Changed message status to ' + b.status],
+  ['POST', /^\/api\/admin\/messages\/\d+\/assign$/, () => 'Assigned a message'],
+  ['DELETE', /^\/api\/admin\/messages\/\d+$/, () => 'Deleted a message'],
+  ['POST', /^\/api\/staff\/announcements$/, () => 'Posted an announcement'],
+  ['PATCH', /^\/api\/staff\/announcements\/\d+$/, () => 'Edited an announcement'],
+  ['DELETE', /^\/api\/staff\/announcements\/\d+$/, () => 'Deleted an announcement'],
+  ['PATCH', /^\/api\/staff\/profile$/, () => 'Updated own profile'],
+  ['POST', /^\/api\/admin\/officials$/, () => 'Added an official'],
+  ['PATCH', /^\/api\/admin\/officials\/\d+$/, () => 'Edited an official'],
+  ['DELETE', /^\/api\/admin\/officials\/\d+$/, () => 'Removed an official'],
+  ['POST', /^\/api\/admin\/users$/, b => 'Created account ' + (b.username || '')],
+  ['PATCH', /^\/api\/admin\/users\/\d+$/, b =>
+    typeof b.password === 'string' ? 'Reset an account password'
+      : typeof b.active === 'boolean' ? (b.active ? 'Enabled' : 'Disabled') + ' an account'
+      : 'Edited an account'],
+  ['PUT', /^\/api\/admin\/content$/, () => 'Saved Barangay Info'],
+  ['PUT', /^\/api\/admin\/services$/, () => 'Saved services and steps'],
+  ['PATCH', /^\/api\/admin\/appointments\/\d+$/, b => 'Set appointment to ' + b.status]
+];
+app.use((req, res, next) => {
+  if (req.method === 'GET' || !/^\/api\/(admin|staff)\//.test(req.path)) return next();
+  const origJson = res.json.bind(res);
+  res.json = body => {
+    const rule = ACT_RULES.find(r => r[0] === req.method && r[1].test(req.path));
+    if (!rule || res.statusCode >= 400 || !req.user) return origJson(body);
+    run('INSERT INTO activity_log (user_id, user_name, action, detail) VALUES (?, ?, ?, ?)',
+      [req.user.id, req.user.full_name, rule[2](req.body || {}), res.locals.detail || ''])
+      .catch(() => {}).finally(() => origJson(body));
+    return res;
+  };
+  next();
+});
+
 // ---------- Public ----------
-
-
 app.get('/api/time', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({ now: Date.now(), source: 'cloudflare' });
@@ -362,9 +417,9 @@ app.post('/api/messages', limit(5, 15), express.json({ limit: '9mb' }), h(async 
   if (website) return res.json({ ok: true }); // honeypot
   const n = clean(name, 100), c = clean(contact, 120), m = clean(message, 2000);
   const t = TOPICS.includes(topic) ? topic : 'Other';
-  if (n.length < 2 || c.length < 5 || m.length < 5) {
-    return res.status(400).json({ error: 'Please fill in your name, contact, and message.' });
-  }
+  if (n.length < 2) return res.status(400).json({ error: 'Please enter your full name.' });
+  if (c.length < 5) return res.status(400).json({ error: 'Please enter a valid phone number or email.' });
+  if (m.length < 5) return res.status(400).json({ error: 'Your message is too short. Please write at least 5 characters.' });
 
   // optional evidence photos (only for concern, suggestion, other)
   let bufs = [];
@@ -437,6 +492,90 @@ app.get('/api/status/:ref/photo/:n', limit(120, 15), h(async (req, res) => {
   const f = await get('SELECT data FROM proof_photos WHERE id = ?', [ids[n].id]);
   if (!f) return res.status(404).end();
   sendJpeg(res, f.data, 'private, no-store');
+}));
+// ---------- Email updates (Resend) ----------
+const extractEmail = s => (String(s).match(/[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+/) || [])[0] || null;
+async function sendEmail(to, subject, text) {
+  const key = process.env.BREVO_API_KEY, fromEmail = process.env.EMAIL_FROM_EMAIL;
+  if (!key || !fromEmail || !to) return;
+  try {
+    const r = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: { 'api-key': key, 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({
+        sender: { name: process.env.EMAIL_FROM_NAME || 'Barangay Zapatera', email: fromEmail },
+        to: [{ email: to }],
+        subject,
+        textContent: text
+      }),
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!r.ok) console.error('Email failed', r.status);
+  } catch (e) { console.error('Email error', e.name); }
+}
+async function notifyStatus(m, status, note) {
+  const to = extractEmail(m.contact);
+  if (!to) return;
+  const lines = {
+    'new': 'We received your request and will review it.',
+    'in progress': 'The Barangay Hall is now working on your request.',
+    'resolved': 'Your request has been marked as resolved.'
+  };
+  let text = `Good day,\n\nUpdate on your request ${m.ref} (${m.topic}):\n${lines[status] || status}\n`;
+  if (status === 'resolved' && note) text += `\nWhat was done: ${note}\n`;
+  text += '\nYou can check your request anytime on our website with your reference number.\n\nBarangay Zapatera';
+  await sendEmail(to, 'Update on your request ' + m.ref, text);
+}
+
+// ---------- Appointments (public) ----------
+const SLOTS = ['08:00', '09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00'];
+const SLOT_CAP = 3; // people per time slot
+const manilaToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+const manilaNow = () => new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const addDays = (s, n) => { const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const isWeekday = s => { const d = new Date(s + 'T00:00:00Z').getUTCDay(); return d >= 1 && d <= 5; };
+const dateOk = s => validDate(s) && s >= manilaToday() && s <= addDays(manilaToday(), 30) && isWeekday(s);
+const slotLabel = t => { const [h, m] = t.split(':'); return ((+h + 11) % 12 + 1) + ':' + m + ' ' + (+h >= 12 ? 'PM' : 'AM'); };
+const newApptRef = () => 'APT-' + Array.from(crypto.randomBytes(6), b => REF_CHARS[b % REF_CHARS.length]).join('');
+
+app.get('/api/appointments/slots', limit(60, 15), h(async (req, res) => {
+  const date = clean(req.query.date, 10);
+  if (!dateOk(date)) return res.status(400).json({ error: 'Choose a weekday within the next 30 days.' });
+  const taken = await all("SELECT slot, COUNT(*) AS n FROM appointments WHERE date = ? AND status <> 'cancelled' GROUP BY slot", [date]);
+  const now = manilaNow(), isToday = date === manilaToday();
+  res.set('Cache-Control', 'no-store');
+  res.json(SLOTS.map(s => {
+    const n = Number((taken.find(t => t.slot === s) || {}).n || 0);
+    return { slot: s, left: (isToday && s <= now) ? 0 : Math.max(0, SLOT_CAP - n) };
+  }));
+}));
+
+app.post('/api/appointments', limit(5, 15), h(async (req, res) => {
+  const { name, contact, purpose, date, slot, website } = req.body || {};
+  if (website) return res.json({ ok: true }); // honeypot
+  const n = clean(name, 100), c = clean(contact, 120), p = clean(purpose, 200), d = clean(date, 10), s = clean(slot, 5);
+  if (n.length < 2) return res.status(400).json({ error: 'Please enter your full name.' });
+  if (c.length < 5) return res.status(400).json({ error: 'Please enter a valid phone number or email.' });
+  if (p.length < 3) return res.status(400).json({ error: 'Please tell us the purpose of your visit.' });
+  if (!dateOk(d)) return res.status(400).json({ error: 'Choose a weekday within the next 30 days.' });
+  if (!SLOTS.includes(s)) return res.status(400).json({ error: 'Choose a time.' });
+  if (d === manilaToday() && s <= manilaNow()) return res.status(400).json({ error: 'That time has already passed.' });
+
+  let ref, saved = false;
+  for (let i = 0; i < 5 && !saved; i++) {
+    ref = newApptRef();
+    try {
+      // inserts only if the slot still has room
+      const r = await run(
+        "INSERT INTO appointments (ref, name, contact, purpose, date, slot) SELECT ?, ?, ?, ?, ?, ? WHERE (SELECT COUNT(*) FROM appointments WHERE date = ? AND slot = ? AND status <> 'cancelled') < ?",
+        [ref, n, c, p, d, s, d, s, SLOT_CAP]);
+      if (!r.rowsAffected) return res.status(409).json({ error: 'That time was just taken. Please choose another.' });
+      saved = true;
+    } catch (e) { if (i === 4) throw e; }
+  }
+  await sendEmail(extractEmail(c), 'Your Barangay Hall visit ' + ref,
+    `Good day ${n},\n\nYour visit is booked.\nReference: ${ref}\nDate: ${d}\nTime: ${slotLabel(s)}\nPurpose: ${p}\n\nPlease bring a valid ID and arrive a few minutes early.\n\nBarangay Zapatera`);
+  res.status(201).json({ ok: true, ref });
 }));
 
 // ---------- AI assistant ----------
@@ -786,7 +925,9 @@ app.patch('/api/admin/messages/:id', auth, ready, can('admin', 'staff'), express
   const id = idParam(req);
   const status = req.body?.status;
   if (!STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status' });
-  if (!(await get('SELECT 1 AS x FROM messages WHERE id = ?', [id]))) return res.status(404).json({ error: 'Message not found.' });
+  const msgRow = await get('SELECT ref, contact, topic FROM messages WHERE id = ?', [id]);
+  if (!msgRow) return res.status(404).json({ error: 'Message not found.' });
+  res.locals.detail = msgRow.ref;
   const note = clean(req.body?.note, 500);
   if (status === 'resolved' && note.length < 5) {
     return res.status(400).json({ error: 'Describe what was done before marking this as resolved.' });
@@ -804,6 +945,7 @@ app.patch('/api/admin/messages/:id', auth, ready, can('admin', 'staff'), express
     const logId = Number(info.lastInsertRowid);
     for (const buf of ph.bufs) await run('INSERT INTO proof_photos (log_id, data) VALUES (?, ?)', [logId, buf], tx);
     await tx.commit();
+    await notifyStatus(msgRow, status, note);
   } catch (e) {
     await tx.rollback().catch(() => {});
     throw e;
@@ -839,6 +981,49 @@ app.delete('/api/admin/messages/:id', auth, ready, can('admin'), h(async (req, r
     { sql: 'DELETE FROM message_log WHERE message_id = ?', args: [id] },
     { sql: 'DELETE FROM messages WHERE id = ?', args: [id] }
   ], 'write');
+  res.json({ ok: true });
+}));
+
+// ---------- Assign a message, activity log, appointments (staff side) ----------
+app.get('/api/admin/staff-list', auth, ready, can('admin', 'staff'), h(async (req, res) => {
+  res.json(await all("SELECT id, full_name, position FROM users WHERE active = 1 AND role IN ('admin','staff') ORDER BY full_name"));
+}));
+
+app.post('/api/admin/messages/:id/assign', auth, ready, can('admin', 'staff'), h(async (req, res) => {
+  const id = idParam(req);
+  const msg = await get('SELECT ref FROM messages WHERE id = ?', [id]);
+  if (!msg) return res.status(404).json({ error: 'Message not found.' });
+  const uid = req.body?.user_id;
+  let assignedId = null, name = null;
+  if (uid !== null && uid !== undefined && uid !== '') {
+    const u = await get("SELECT id, full_name FROM users WHERE id = ? AND active = 1 AND role IN ('admin','staff')", [Number(uid)]);
+    if (!u) return res.status(400).json({ error: 'That person cannot be assigned.' });
+    assignedId = u.id; name = u.full_name;
+  }
+  await run('UPDATE messages SET assigned_id = ?, assigned_name = ? WHERE id = ?', [assignedId, name, id]);
+  res.locals.detail = msg.ref + (name ? ' to ' + name : ' (unassigned)');
+  res.json({ ok: true });
+}));
+
+app.get('/api/admin/activity', auth, ready, can('admin'), h(async (req, res) => {
+  res.json(await all('SELECT id, user_name, action, detail, created_at FROM activity_log ORDER BY id DESC LIMIT 200'));
+}));
+
+app.get('/api/admin/appointments', auth, ready, can('admin', 'staff'), h(async (req, res) => {
+  res.json(await all('SELECT id, ref, name, contact, purpose, date, slot, status, created_at FROM appointments ORDER BY date DESC, slot ASC LIMIT 200'));
+}));
+
+app.patch('/api/admin/appointments/:id', auth, ready, can('admin', 'staff'), h(async (req, res) => {
+  const id = idParam(req), status = req.body?.status;
+  if (!['booked', 'done', 'cancelled'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
+  const a = await get('SELECT ref, contact, date, slot, status FROM appointments WHERE id = ?', [id]);
+  if (!a) return res.status(404).json({ error: 'Appointment not found.' });
+  await run('UPDATE appointments SET status = ? WHERE id = ?', [status, id]);
+  res.locals.detail = a.ref;
+  if (status === 'cancelled' && a.status !== 'cancelled') {
+    await sendEmail(extractEmail(a.contact), 'Your Barangay Hall visit ' + a.ref + ' was cancelled',
+      `Good day,\n\nYour visit ${a.ref} on ${a.date} at ${slotLabel(a.slot)} was cancelled by the Barangay Hall. You may book another time on our website.\n\nBarangay Zapatera`);
+  }
   res.json({ ok: true });
 }));
 
@@ -1044,6 +1229,7 @@ const CONTENT = [
   { key: 'phone', group: 'Hall hours and contact details', label: 'Phone number', max: 40, def: '' },
   { key: 'email', group: 'Hall hours and contact details', label: 'Email address', max: 120, def: '' },
   { key: 'facebook', group: 'Hall hours and contact details', label: 'Facebook page', max: 200, def: '' },
+  { key: 'map_query', group: 'Hall hours and contact details', label: 'Map search text (the place name or address exactly as you type it in Google Maps)', max: 200, def: '' },
   { key: 'about_text', group: 'About Barangay Zapatera', label: 'About (2 to 3 sentences)', max: 800, multi: true, def: '' },
   { key: 'mission', group: 'About Barangay Zapatera', label: 'Mission', max: 500, multi: true, def: '' },
   { key: 'vision', group: 'About Barangay Zapatera', label: 'Vision', max: 500, multi: true, def: '' },
@@ -1176,6 +1362,9 @@ app.use((err, req, res, next) => {
 // ---------- Start (runs once when the Worker wakes up) ----------
 async function boot() {
   await client.executeMultiple(SCHEMA);
+  const mcols = (await all('PRAGMA table_info(messages)')).map(c => c.name);
+  if (!mcols.includes('assigned_id')) await run('ALTER TABLE messages ADD COLUMN assigned_id INTEGER');
+  if (!mcols.includes('assigned_name')) await run('ALTER TABLE messages ADD COLUMN assigned_name TEXT');
   await run('DELETE FROM sessions WHERE expires_at < ?', [Date.now()]);
   const n = (await get('SELECT COUNT(*) AS n FROM users')).n;
   if (n === 0) {

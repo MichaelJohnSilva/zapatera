@@ -438,6 +438,20 @@
   .gl-f{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 16px;font-size:.88rem}
   .gl-f button{border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;padding:7px 14px;border-radius:99px;font:600 .85rem var(--body);cursor:pointer}
   .gl-f button:hover{background:var(--accent);border-color:var(--accent)}
+
+    /* tap-to-call links */
+  .hot strong a,.hours dd a,td a[href^="tel:"],footer a.tel{color:inherit;text-decoration:none}
+  .hot strong a:hover,.hours dd a:hover,td a[href^="tel:"]:hover{text-decoration:underline}
+  .hot strong a::after{content:" \260E";font-size:.6em;vertical-align:middle}
+
+  /* map */
+  .mapbox{display:grid;gap:12px;margin-top:18px}
+  .mapbox iframe{width:100%;height:280px;border:1px solid var(--line);border-radius:10px;background:var(--alt)}
+  .mapbox .btn{justify-self:start}
+
+  /* appointment status message */
+  #apok{display:none;padding:12px 16px;border-radius:6px;background:var(--tint);border-left:4px solid var(--accent);animation:rise .4s ease both}
+
   </style>
 </head>
 <body>
@@ -600,6 +614,20 @@
   <a class="btn red" href="#contact">Send a message</a>
 </div></div>
 
+<section id="appointment"><div class="wrap">
+  <div class="head"><h2>Book a visit</h2><p>Pick a day and time to visit the Barangay Hall and spend less time in line.</p></div>
+  <form id="apf" style="max-width:520px">
+    <label style="position:absolute;left:-9999px" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
+    <label>Full name<input name="n" required maxlength="100" autocomplete="name"></label>
+    <label>Phone or email<input name="c" required minlength="5" maxlength="120"><small style="font-weight:400;color:var(--muted)">Use an email address to get a confirmation.</small></label>
+    <label>Purpose of visit<input name="p" required minlength="3" maxlength="200" placeholder="e.g. Barangay Clearance for a job application"></label>
+    <label>Date (Monday to Friday)<input type="date" name="d" id="apd" required></label>
+    <label>Time<select name="s" id="aps" required><option value="">Choose a date first</option></select></label>
+    <button class="btn red" type="submit" id="apb">Book appointment</button>
+    <div id="apok" role="status"></div>
+  </form>
+</div></section>
+
 <section id="track" class="alt"><div class="wrap">
   <div class="head"><h2>Check your request</h2><p>Enter the reference number you received after sending your message.</p></div>
   <form id="tf" style="max-width:520px">
@@ -619,15 +647,20 @@
       <tr><th>Email</th><td>[Email address]</td></tr>
       <tr><th>Facebook</th><td>[Page link]</td></tr>
     </table></div>
+    <div class="mapbox">
+      <iframe id="mapf" title="Map of the Barangay Hall" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen
+        src="https://www.google.com/maps?q=Barangay%20Zapatera%2C%20Cebu%20City%2C%20Philippines&output=embed"></iframe>
+      <a class="btn red" id="mapd" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=Barangay%20Zapatera%2C%20Cebu%20City">Get directions</a>
+    </div>
   </div>
   <div>
     <div class="head" style="margin-bottom:24px"><h2>Send a message</h2><p>Fill in the form and the Hall will get back to you.</p></div>
     <form id="f">
       <label style="position:absolute;left:-9999px" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
       <label>Full name<input name="n" required autocomplete="name" maxlength="100"></label>
-      <label>Phone or email<input name="c" required maxlength="120"></label>
+      <label>Phone or email<input name="c" required minlength="5" maxlength="120"><small style="font-weight:400;color:var(--muted)">Use an email address if you want status updates sent to your inbox.</small></label>
       <label>Topic<select name="t"><option>Request a document</option><option>Report a concern</option><option>Suggestion</option><option>Other</option></select></label>
-      <label>Message<textarea name="m" rows="4" required maxlength="2000"></textarea></label>
+      <label>Message<textarea name="m" rows="4" required minlength="5" maxlength="2000"></textarea></label>
       <div id="evwrap" hidden>
         <label>Proof or evidence (optional, up to 3 photos)<input type="file" id="ev" accept="image/*" multiple></label>
         <small>Only the Barangay Hall staff can see these photos. Do not upload IDs or private documents.</small>
@@ -643,7 +676,7 @@
   <div class="fg">
     <div><div class="seal" role="img" aria-label="Official seal"></div><h4>Barangay Zapatera</h4><p>Barangay Hall, Zapatera, Cebu City, Philippines</p></div>
     <div><h4>Explore</h4><a href="#about">About</a><a href="#services">Services</a><a href="#news">News</a></div>
-    <div><h4>Help</h4><a href="#process">Request a document</a><a href="#track">Check your request</a><a href="#emergency">Hotlines</a><a href="#contact">Contact</a></div>    <div><h4>Reach us</h4><p>[Phone]</p><p>[Email]</p><p>[Facebook page]</p></div>
+    <div><h4>Help</h4><a href="#process">Request a document</a><a href="#appointment">Book a visit</a><a href="#track">Check your request</a><a href="#emergency">Hotlines</a><a href="#contact">Contact</a></div>    <div><h4>Reach us</h4><p>[Phone]</p><p>[Email]</p><p>[Facebook page]</p></div>
     
   </div>
   <div class="copy">Official website of Barangay Zapatera. Text in [brackets] is placeholder and must be replaced with verified details.</div>
@@ -675,6 +708,19 @@
       if(!c[k])return;
       MAP[k].forEach(function(sel){var el=document.querySelector(sel);if(el)el.textContent=(PRE[k]||'')+c[k]});
     });
+
+    /* tap-to-call: turn phone numbers into links (placeholders in [brackets] and mixed text are skipped) */
+    document.querySelectorAll('.hot strong, .hours dl div:nth-child(4) dd, #contact table tr:nth-child(3) td, .fg > div:nth-child(4) p:nth-child(2)').forEach(function(el){
+      var t=el.textContent.trim();
+      if(!/^[\d+()\-\s]+$/.test(t)||t.replace(/\D/g,'').length<3)return;
+      var a=document.createElement('a');a.href='tel:'+t.replace(/[^\d+]/g,'');a.textContent=t;
+      el.replaceChildren(a);
+    });
+
+    /* map follows the saved address */
+    var q=c.map_query||c.address||'Barangay Zapatera, Cebu City, Philippines';
+    document.getElementById('mapf').src='https://www.google.com/maps?q='+encodeURIComponent(q)+'&output=embed';
+    document.getElementById('mapd').href='https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q);
 
         /* office hours: let the open/closed badge follow the saved text */
     function parseTimes(s){
@@ -1568,6 +1614,52 @@ var HOURS={days:[1,2,3,4,5],open:8,close:17};
       });
     }
   })();
+})();
+</script>
+<script>
+(function(){
+  var f=document.getElementById('apf'),d=document.getElementById('apd'),s=document.getElementById('aps'),
+      ok=document.getElementById('apok'),b=document.getElementById('apb');
+  var today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Manila'});
+  function addDays(str,n){var x=new Date(str+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10)}
+  d.min=today;d.max=addDays(today,30);
+  function t12(t){var p=t.split(':'),h=+p[0];return ((h+11)%12+1)+':'+p[1]+' '+(h>=12?'PM':'AM')}
+  function opt(v,t,dis){var o=document.createElement('option');o.value=v;o.textContent=t;o.disabled=!!dis;return o}
+
+  async function loadSlots(){
+    s.replaceChildren();
+    if(!d.value){s.append(opt('','Choose a date first'));return}
+    var wd=new Date(d.value+'T00:00:00Z').getUTCDay();
+    if(wd===0||wd===6){s.append(opt('','The Hall is closed on weekends. Pick a weekday.'));return}
+    s.append(opt('','Loading times...'));
+    try{
+      var r=await fetch('/api/appointments/slots?date='+encodeURIComponent(d.value),{cache:'no-store'});
+      var data=await r.json().catch(function(){return null});
+      if(!r.ok)throw new Error((data&&data.error)||'Could not load times.');
+      var any=false;
+      s.replaceChildren(opt('','Choose a time'));
+      data.forEach(function(x){
+        if(x.left>0)any=true;
+        s.append(opt(x.slot,t12(x.slot)+(x.left>0?' ('+x.left+' left)':' (full)'),x.left<1));
+      });
+      if(!any)s.replaceChildren(opt('','No time left on this day. Try another date.'));
+    }catch(e){s.replaceChildren(opt('',e.message))}
+  }
+  d.addEventListener('change',loadSlots);
+
+  f.addEventListener('submit',async function(e){
+    e.preventDefault();b.disabled=true;
+    try{
+      var r=await fetch('/api/appointments',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({name:f.n.value,contact:f.c.value,purpose:f.p.value,date:d.value,slot:s.value,website:f.website.value})});
+      var data=await r.json().catch(function(){return {}});
+      if(!r.ok)throw new Error(data.error||'Something went wrong. Please try again.');
+      var nice=new Date(d.value+'T00:00:00Z').toLocaleDateString('en-PH',{weekday:'long',year:'numeric',month:'long',day:'numeric',timeZone:'UTC'});
+      ok.textContent='Your visit is booked for '+nice+' at '+t12(s.value)+'. Reference number: '+data.ref+'. Please save it.';
+      f.reset();loadSlots();
+    }catch(err){ok.textContent=err.message;loadSlots()}
+    ok.style.display='block';b.disabled=false;
+  });
 })();
 </script>
 </body>
