@@ -7,9 +7,11 @@
     "node": ">=20"
   },
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch --env-file=.env server.js"
+  "start": "node --env-file=.env dev.js",
+  "dev": "node --watch --env-file=.env dev.js",
+  "deploy": "wrangler deploy"
   },
+  
   "dependencies": {
     "@libsql/client": "^0.14.0",
     "express": "^4.21.0",

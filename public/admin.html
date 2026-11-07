@@ -238,7 +238,7 @@ footer span{opacity:.8}
 .sbar{position:sticky;bottom:0;z-index:5;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 16px;box-shadow:0 -6px 20px rgba(20,26,43,.08);margin-top:14px}
 .sbar .dirty{color:var(--accent);font-weight:600}
 
-/* ===== NEW: dashboard visuals (Messages tab) ===== */
+/* ===== dashboard visuals (Messages tab) ===== */
 .vizgrid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));margin-bottom:18px}
 .vcard{margin:0}
 .vcard h3{margin-bottom:2px}
@@ -351,10 +351,12 @@ footer span{opacity:.8}
     <nav aria-label="Sections">
       <button data-go="ann" class="on">Announcements</button>
       <button data-go="msgs" id="nav-msgs">Messages <span class="cnt hide" id="mcnt"></span></button>
+      <button data-go="appts" id="nav-appts">Appointments</button>
       <button data-go="accts" id="nav-accts">Accounts</button>
       <button data-go="offs" id="nav-offs">Officials</button>
       <button data-go="site" id="nav-site">Barangay Info</button>
       <button data-go="prof" id="nav-prof">My profile</button>
+      <button data-go="act" id="nav-act">Activity</button>
     </nav>
   </div></header>
 </div>
@@ -407,13 +409,31 @@ footer span{opacity:.8}
     <section id="msgs" class="hide">
       <div class="ph"><h2>Messages</h2><p>Messages sent by residents through the website. Marking a message as resolved requires a note, and up to 4 photos can be attached as proof.</p></div>
 
-      <!-- NEW: dashboard visuals -->
       <div class="vizgrid" id="viz">
         <div class="card vcard"><h3>Status</h3><div class="meta">All resident messages</div><div class="donut" id="vzStatus"></div></div>
         <div class="card vcard"><h3>By topic</h3><div class="meta">What residents write about</div><div id="vzTopic"></div></div>
         <div class="card vcard"><h3>Last 7 days</h3><div class="meta">New messages per day</div><div class="dbars" id="vzDays"></div></div>
       </div>
 
+      <div class="card" id="mfilter">
+        <div class="two">
+          <input id="fq" type="search" placeholder="Search name, contact, reference, or message">
+          <select id="fs"><option value="">All Status</option><option>new</option><option>in progress</option><option>resolved</option></select>
+        </div>
+        <div class="two" style="margin-top:12px">
+          <select id="ft"><option value="">All topics</option><option>Request a document</option><option>Report a concern</option><option>Suggestion</option><option>Other</option></select>
+          <select id="fa"><option value="">Assigned to anyone</option><option value="me">Assigned to me</option><option value="none">Unassigned</option></select>
+        </div>
+        <div class="two" style="margin-top:12px">
+          <label>From<input id="ff" type="date"></label>
+          <label>To<input id="fto" type="date"></label>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <label style="grid-auto-flow:column;justify-content:start;align-items:center;font-weight:500"><input type="checkbox" id="snd" checked style="width:auto"> Sound alert for new messages</label>
+          <span class="meta" id="fcount"></span>
+          <button type="button" class="btn sm" id="fclear">Clear filters</button>
+        </div>
+      </div>
       <div id="mlist"></div>
     </section>
 
@@ -457,6 +477,15 @@ footer span{opacity:.8}
         </div>
       </form>
       <div id="olist"></div>
+    </section>
+        <section id="sec-appt" class="hide">
+      <div class="ph"><h2>Appointments</h2><p>Residents who booked a visit through the website. Cancelling sends them an email if they gave one.</p></div>
+      <div id="applist"></div>
+    </section>
+
+    <section id="sec-act" class="hide">
+      <div class="ph"><h2>Activity log</h2><p>Who changed what and when. Shows the latest 200 actions.</p></div>
+      <div id="actlist"></div>
     </section>
     <section id="sec-site" class="hide">
       <div class="ph"><h2>Barangay Info</h2><p>Update the barangay's official details here: about, contact, services, how to request a document, and hotlines. They show on the public website and are also used by the chat assistant. Leave a field blank to show the placeholder text.</p></div>
@@ -608,10 +637,12 @@ function view(name) {
 }
 
 /* ---------- tabs ---------- */
-const panels = { ann: 'sec-ann', msgs: 'msgs', accts: 'accts', offs: 'offs', site: 'sec-site', prof: 'sec-prof' };
+const panels = { ann: 'sec-ann', msgs: 'msgs', appts: 'sec-appt', accts: 'accts', offs: 'offs', site: 'sec-site', prof: 'sec-prof', act: 'sec-act' };
 function tab(n) {
   Object.entries(panels).forEach(([k, id]) => $(id).classList.toggle('hide', k !== n));
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.go === n));
+  if (user && n === 'appts') loadAppointments();
+  if (user && n === 'act') loadActivity();
 }
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => tab(b.dataset.go));
 
@@ -633,8 +664,8 @@ function toast(msg, bad) {
   const t = el('div', { className: 'toast' + (bad ? ' bad' : ''), textContent: msg });
   t.setAttribute('role', 'status');
   document.body.append(t);
-  setTimeout(() => t.classList.add('out'), 2600);
-  setTimeout(() => t.remove(), 3100);
+  setTimeout(() => t.classList.add('out'), 6000);
+  setTimeout(() => t.remove(), 6500);
 }
 
 const initials = n => String(n || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
@@ -869,7 +900,7 @@ function shrink(file) {
   });
 }
 
-/* ---------- NEW: dashboard visuals for the Messages tab (display only) ---------- */
+/* ---------- dashboard visuals for the Messages tab (display only) ---------- */
 const SVGNS = 'http://www.w3.org/2000/svg';
 const svgEl = (tag, attrs = {}) => {
   const e = document.createElementNS(SVGNS, tag);
@@ -952,15 +983,21 @@ function drawViz(msgs) {
   });
 }
 
-async function loadMessages() {
-  const msgs = await api('/api/admin/messages');
+let cachedMsgs = null;
+async function loadMessages(useCache) {
+  const msgs = (useCache && cachedMsgs) ? cachedMsgs : await api('/api/admin/messages');
+  cachedMsgs = msgs;
   drawViz(msgs);
   const ml = $('mlist'); ml.replaceChildren();
   const nNew = msgs.filter(m => m.status === 'new').length;
   $('st-new').textContent = nNew;
+  lastMsgId = msgs.length ? Math.max(...msgs.map(m => m.id)) : 0;
+  document.title = (nNew ? '(' + nNew + ') ' : '') + 'Staff Portal | Barangay Zapatera';
   $('mcnt').textContent = nNew; $('mcnt').classList.toggle('hide', !nNew);
-  if (!msgs.length) ml.append(el('div', { className: 'empty', textContent: 'No messages yet.' }));
-  msgs.forEach(m => {
+  const shown = msgs.filter(passFilter);
+  $('fcount').textContent = shown.length + ' of ' + msgs.length + ' shown';
+  if (!shown.length) ml.append(el('div', { className: 'empty', textContent: msgs.length ? 'No messages match your filters.' : 'No messages yet.' }));
+  shown.forEach(m => {
     const cls = m.status === 'new' ? 'new' : m.status === 'resolved' ? 'resolved' : '';
     const sel = el('select');
     ['new', 'in progress', 'resolved'].forEach(s => sel.append(el('option', { value: s, textContent: s, selected: s === m.status })));
@@ -1010,7 +1047,17 @@ async function loadMessages() {
       } catch (e) { alert(e.message); }
     };
 
-    const acts = el('div', { className: 'acts' }, sel, hbtn);
+    const asg = el('select', { title: 'Assign to' });
+    asg.append(el('option', { value: '', textContent: 'Unassigned' }));
+    staffList.forEach(s => asg.append(el('option', { value: s.id, textContent: s.full_name, selected: s.id === m.assigned_id })));
+    asg.onchange = async () => {
+      try {
+        await api('/api/admin/messages/' + m.id + '/assign', 'POST', { user_id: asg.value ? Number(asg.value) : null });
+        toast(asg.value ? 'Message assigned' : 'Assignment removed');
+        loadMessages();
+      } catch (e) { alert(e.message); }
+    };
+    const acts = el('div', { className: 'acts' }, sel, asg, hbtn);
     if (user.role === 'admin') {
       const del = el('button', { className: 'btn sm d', textContent: 'Delete' });
       del.onclick = async () => {
@@ -1029,7 +1076,7 @@ async function loadMessages() {
 
     ml.append(el('div', { className: 'card item ' + cls },
       el('div', { className: 'row' }, el('b', { textContent: m.name }), el('span', { className: 'badge ' + cls, textContent: m.status })),
-      el('div', { className: 'meta', textContent: (m.ref ? m.ref + ' | ' : '') + m.topic + ' | ' + m.contact + ' | ' + fmt(m.created_at) + (m.handled_by ? ' | handled by ' + m.handled_by : '') }),
+      el('div', { className: 'meta', textContent: (m.ref ? m.ref + ' | ' : '') + m.topic + ' | ' + m.contact + ' | ' + fmt(m.created_at) + (m.handled_by ? ' | handled by ' + m.handled_by : '') + (m.assigned_name ? ' | assigned to ' + m.assigned_name : '') }),
       el('div', { className: 'msg', textContent: m.message }),
       ...(evBox ? [evBox] : []),
       acts, panel, hist));
@@ -1104,7 +1151,9 @@ async function loadUsers() {
       el('td', { textContent: u.username }),
       contact,
       el('td', {}, el('span', { className: 'badge ' + (u.active ? 'on' : 'off'), textContent: u.active ? 'active' : 'disabled' })),
-      el('td', {}, el('div', { className: 'acts' }, edit, reset, tog))));
+      el('td', {}, (u.position === 'Administrator' && user.position !== 'Administrator')
+        ? el('span', { className: 'meta', textContent: 'Protected account' })
+        : el('div', { className: 'acts' }, edit, reset, tog))));
   });
   const head = el('thead', {}, el('tr', {}, ...['Name', 'Position', 'Username', 'Contact', 'Status', 'Actions'].map(t => el('th', { textContent: t }))));
   $('ulist').replaceChildren(el('div', { className: 'tbl' }, el('table', {}, head, tb)));
@@ -1196,6 +1245,32 @@ const SITE_NAV = [
   ['Emergency hotlines', 'Hotlines', 'Numbers residents can call'],
   ['Top of the page', 'Page headline', 'Main title and intro']
 ];
+
+/* time helpers (Time in / Time out) */
+const to12 = t => { if (!t) return ''; const p = t.split(':'), h = +p[0]; return ((h + 11) % 12 + 1) + ':' + p[1] + ' ' + (h >= 12 ? 'PM' : 'AM'); };
+const to24 = s => { const m = /(\d{1,2}):?(\d{2})?\s*(am|pm)/i.exec(s || ''); if (!m) return ''; let h = +m[1] % 12; if (/pm/i.test(m[3])) h += 12; return String(h).padStart(2, '0') + ':' + (m[2] || '00'); };
+
+/* open-days helpers (saved as "Mon to Fri" or "Mon, Wed, Sat") */
+const DAYS = [['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6], ['Sun', 0]];
+const daysToSet = s => {
+  const f = String(s || '').toLowerCase().match(/sun|mon|tue|wed|thu|fri|sat/g);
+  if (!f) return [];
+  const N = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'], a = f.map(x => N.indexOf(x));
+  if (/\bto\b|-|\u2013/.test(s) && a.length === 2) {
+    const r = []; let i = a[0];
+    while (true) { r.push(i); if (i === a[1]) break; i = (i + 1) % 7; }
+    return r;
+  }
+  return a;
+};
+const setToDays = sel => {
+  const idx = DAYS.map((d, i) => sel.includes(d[1]) ? i : -1).filter(i => i > -1);
+  if (!idx.length) return '';
+  const run = idx.every((v, k) => k === 0 || v === idx[k - 1] + 1);
+  if (run && idx.length >= 3) return DAYS[idx[0]][0] + ' to ' + DAYS[idx[idx.length - 1]][0];
+  return idx.map(i => DAYS[i][0]).join(', ');
+};
+
 const SVC_ICONS = [['doc', 'Document'], ['home', 'House'], ['heart', 'Health'], ['biz', 'Business'], ['scale', 'Mediation'], ['shield', 'Safety']];
 let siteDirty = false, svcList = [], stepList = [], sitePane = null;
 
@@ -1282,6 +1357,39 @@ async function loadSite(keep) {
     } else {
       const grid = el('div', { className: 'ffields' });
       (groups[key] || []).forEach(f => {
+
+        /* OPEN DAYS: checkboxes */
+        if (f.key === 'days') {
+          const hid = el('input', { type: 'hidden', value: f.value || '' });
+          hid.dataset.k = 'days';
+          const on = daysToSet(f.value), row = el('div', { className: 'acts' });
+          const boxes = DAYS.map(([n, num]) => {
+            const cb = el('input', { type: 'checkbox', checked: on.includes(num) });
+            cb.style.width = 'auto';
+            row.append(el('label', { style: 'display:flex;gap:6px;align-items:center;font-weight:500' }, cb, n));
+            cb.onchange = () => {
+              hid.value = setToDays(DAYS.filter((d, i) => boxes[i].checked).map(d => d[1]));
+              markDirty();
+            };
+            return cb;
+          });
+          grid.append(el('div', { className: 'wide stack' }, el('b', { style: 'font-size:.9rem', textContent: 'Open days' }), row, hid));
+          return;
+        }
+
+        /* HOURS: Time in and Time out pickers */
+        if (f.key === 'hours') {
+          const hid = el('input', { type: 'hidden', value: f.value || '' });
+          hid.dataset.k = 'hours';
+          const pp = (f.value || '').split(/\s+to\s+/i);
+          const tin = el('input', { type: 'time', id: 'hoursIn', value: to24(pp[0]) });
+          const tout = el('input', { type: 'time', id: 'hoursOut', value: to24(pp[1]) });
+          const sync = () => { hid.value = (tin.value && tout.value) ? to12(tin.value) + ' to ' + to12(tout.value) : ''; markDirty(); };
+          tin.oninput = sync; tout.oninput = sync;
+          grid.append(el('div', { className: 'two wide' }, fld('Time in', tin), fld('Time out', tout)), hid);
+          return;
+        }
+
         const inp = el(f.multi ? 'textarea' : 'input', { value: f.value || '', maxLength: f.max, placeholder: f.def || '' });
         if (f.multi) inp.rows = 3;
         inp.dataset.k = f.key; inp.oninput = markDirty;
@@ -1297,6 +1405,10 @@ async function loadSite(keep) {
 
 $('sf').onsubmit = async e => {
   e.preventDefault();
+  const hi = $('hoursIn'), ho = $('hoursOut');
+  if (hi && ho && (hi.value || ho.value) && (!hi.value || !ho.value || ho.value <= hi.value)) {
+    toast('Set both times, and make Time out later than Time in.', true); return;
+  }
   const values = {};
   $('spanes').querySelectorAll('[data-k]').forEach(i => { values[i.dataset.k] = i.value; });
   if (svcList.some(s => (s.name || '').trim().length < 2)) { toast('Every service needs a name.', true); showPane('__services'); return; }
@@ -1311,6 +1423,126 @@ $('sf').onsubmit = async e => {
   busy($('sbtn'), false);
 };
 
+/* ---------- staff list, filters, sound ---------- */
+let staffList = [];
+
+const pad2 = n => String(n).padStart(2, '0');
+const localKey = s => { const d = new Date(s.replace(' ', 'T') + 'Z'); return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); };
+
+function passFilter(m) {
+  const q = $('fq').value.trim().toLowerCase();
+  if (q && !(m.name + ' ' + m.contact + ' ' + (m.ref || '') + ' ' + m.message).toLowerCase().includes(q)) return false;
+  if ($('fs').value && m.status !== $('fs').value) return false;
+  if ($('ft').value && m.topic !== $('ft').value) return false;
+  const a = $('fa').value;
+  if (a === 'me' && m.assigned_id !== user.id) return false;
+  if (a === 'none' && m.assigned_id) return false;
+  const k = localKey(m.created_at);
+  if ($('ff').value && k < $('ff').value) return false;
+  if ($('fto').value && k > $('fto').value) return false;
+  return true;
+}
+
+let fTimer;
+['fq', 'fs', 'ft', 'fa', 'ff', 'fto'].forEach(id => $(id).addEventListener('input', () => {
+  clearTimeout(fTimer);
+  fTimer = setTimeout(() => loadMessages(true), 200);
+}));
+$('fclear').onclick = () => {
+  ['fq', 'fs', 'ft', 'fa', 'ff', 'fto'].forEach(id => { $(id).value = ''; });
+  loadMessages(true);
+};
+
+/* sound alert (a short two-tone beep) */
+let audioCtx = null;
+document.addEventListener('click', () => {
+  try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); } catch (e) {}
+}, { once: true });
+try { if (localStorage.getItem('snd') === '0') $('snd').checked = false; } catch (e) {}
+function beep() {
+  if (!$('snd').checked) return;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    [880, 1175].forEach((f, i) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain(), t = audioCtx.currentTime + i * 0.18;
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t); o.stop(t + 0.32);
+    });
+  } catch (e) {}
+}
+$('snd').onchange = () => {
+  try { localStorage.setItem('snd', $('snd').checked ? '1' : '0'); } catch (e) {}
+  if ($('snd').checked) beep();
+};
+
+/* ---------- appointments ---------- */
+async function loadAppointments() {
+  try {
+    const rows = await api('/api/admin/appointments');
+    const box = $('applist'); box.replaceChildren();
+    if (!rows.length) { box.append(el('div', { className: 'empty', textContent: 'No appointments yet.' })); return; }
+    rows.forEach(a => {
+      const cls = a.status === 'done' ? 'resolved' : a.status === 'booked' ? 'new' : '';
+      const sel = el('select');
+      ['booked', 'done', 'cancelled'].forEach(s => sel.append(el('option', { value: s, textContent: s, selected: s === a.status })));
+      sel.onchange = async () => {
+        if (sel.value === 'cancelled' && !confirm('Cancel this appointment? The resident will be emailed if they gave an email.')) { sel.value = a.status; return; }
+        try { await api('/api/admin/appointments/' + a.id, 'PATCH', { status: sel.value }); toast('Appointment updated'); loadAppointments(); }
+        catch (e) { alert(e.message); }
+      };
+      box.append(el('div', { className: 'card item ' + cls },
+        el('div', { className: 'row' }, el('b', { textContent: a.name }), el('span', { className: 'badge ' + cls, textContent: a.status })),
+        el('div', { className: 'meta', textContent: a.ref + ' | ' + evDay(a.date) + ' at ' + evTime(a.slot) + ' | ' + a.contact }),
+        el('div', { className: 'msg', textContent: a.purpose }),
+        el('div', { className: 'acts' }, sel)));
+    });
+  } catch (e) {}
+}
+
+/* ---------- activity log (admin only) ---------- */
+async function loadActivity() {
+  try {
+    const rows = await api('/api/admin/activity');
+    const box = $('actlist');
+    if (!rows.length) { box.replaceChildren(el('div', { className: 'empty', textContent: 'No activity recorded yet.' })); return; }
+    const tb = el('tbody');
+    rows.forEach(r => tb.append(el('tr', {},
+      el('td', { textContent: fmt(r.created_at) }),
+      el('td', { textContent: r.user_name }),
+      el('td', { textContent: r.action }),
+      el('td', { className: 'meta', textContent: r.detail }))));
+    const head = el('thead', {}, el('tr', {}, ...['When', 'Who', 'Action', 'Details'].map(t => el('th', { textContent: t }))));
+    box.replaceChildren(el('div', { className: 'tbl' }, el('table', {}, head, tb)));
+  } catch (e) {}
+}
+
+/* ---------- live new-message alerts (checks every 3 seconds) ---------- */
+let lastMsgId = null, pollT = null;
+
+async function pollMessages() {
+  if (!user || document.hidden) return;
+  try {
+    const r = await fetch('/api/admin/messages-poll');
+    if (!r.ok) return;
+    const d = await r.json();
+    if (lastMsgId === null) { lastMsgId = d.latest; return; }
+    if (d.latest > lastMsgId) {
+      lastMsgId = d.latest;
+      toast('New message from ' + d.name + ' (' + d.topic + ')');
+      beep();
+      loadMessages();
+    }
+  } catch (e) {}
+}
+function startPolling() { clearInterval(pollT); pollT = setInterval(pollMessages, 3000); }
+function stopPolling() { clearInterval(pollT); pollT = null; lastMsgId = null; }
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pollMessages(); });
+
 async function enter(u) {
   user = u; forced = !!u.must_change;
   refreshUserUI();
@@ -1320,13 +1552,15 @@ async function enter(u) {
   const canMsg = u.role === 'admin' || u.role === 'staff';
   $('nav-msgs').classList.toggle('hide', !canMsg);
   $('stw-msg').classList.toggle('hide', !canMsg);
+  $('nav-appts').classList.toggle('hide', !canMsg);
+  $('nav-act').classList.toggle('hide', u.role !== 'admin');
   $('nav-accts').classList.toggle('hide', u.role !== 'admin');
   $('nav-offs').classList.toggle('hide', u.role !== 'admin');
   $('nav-site').classList.toggle('hide', u.role !== 'admin');
   $('stw-usr').classList.toggle('hide', u.role !== 'admin');
   tab('ann');
   await loadAnnouncements();
-  if (canMsg) await loadMessages();
+  if (canMsg) { staffList = await api('/api/admin/staff-list'); await loadMessages(); loadAppointments(); startPolling(); }
   if (u.role === 'admin') { await loadUsers(); await loadOfficials(); await loadSite(); }
 }
 
@@ -1357,6 +1591,7 @@ $('pwf').onsubmit = async e => {
 $('chg').onclick = () => { $('perr').classList.remove('on'); view('pw'); };
 $('pwx').onclick = () => view('app');
 $('out').onclick = async () => {
+  stopPolling();
   await api('/api/auth/logout', 'POST').catch(() => {});
   user = null; resetAnnForm(); view('login');
 };
