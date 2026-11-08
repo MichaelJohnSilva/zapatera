@@ -462,7 +462,7 @@ const latestProof = id => get("SELECT id, note, created_at FROM message_log WHER
 app.get('/api/status/:ref', limit(20, 15), h(async (req, res) => {
   const ref = clean(req.params.ref, 20).toUpperCase();
 
-  // NEW: appointment reference
+  // appointment reference
   if (/^APT-[A-Z0-9]{6}$/.test(ref)) {
     const a = await get('SELECT ref, date, slot, status, created_at FROM appointments WHERE ref = ?', [ref]);
     if (!a) return res.status(404).json({ error: 'Reference number not found. Check the number and try again.' });
@@ -470,7 +470,6 @@ app.get('/api/status/:ref', limit(20, 15), h(async (req, res) => {
     return res.json({ type: 'appointment', ref: a.ref, status: a.status, date: a.date, slot: a.slot, created_at: a.created_at });
   }
 
-  // existing code
   const m = /^ZAP-[A-Z0-9]{6}$/.test(ref)
     ? await get('SELECT id, ref, topic, status, created_at, updated_at FROM messages WHERE ref = ?', [ref])
     : null;
@@ -503,7 +502,8 @@ app.get('/api/status/:ref/photo/:n', limit(120, 15), h(async (req, res) => {
   if (!f) return res.status(404).end();
   sendJpeg(res, f.data, 'private, no-store');
 }));
-// ---------- Email updates (Resend) ----------
+
+// ---------- Email updates (Brevo) ----------
 const extractEmail = s => (String(s).match(/[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+/) || [])[0] || null;
 async function sendEmail(to, subject, text) {
   const key = process.env.BREVO_API_KEY, fromEmail = process.env.EMAIL_FROM_EMAIL;
@@ -573,16 +573,23 @@ function parseTimes(s) {
   return out[1] > out[0] ? out : null;
 }
 async function getSchedule() {
-  const rows = await all("SELECT name, value FROM site_content WHERE name IN ('days', 'hours')");
+  const rows = await all("SELECT name, value FROM site_content WHERE name IN ('days', 'hours', 'day_hours')");
   const c = {}; rows.forEach(r => { c[r.name] = r.value; });
   const days = parseDays(c.days) || [1, 2, 3, 4, 5];
-  const [open, close] = parseTimes(c.hours) || [8, 17];
-  const slots = [];
-  for (let h = Math.ceil(open); h + 1 <= close; h++) {
-    if (h === 12) continue; // lunch break
-    slots.push(String(h).padStart(2, '0') + ':00');
-  }
-  return { days, open, close, slots };
+  const def = parseTimes(c.hours) || [8, 17];
+  let over = {}; try { over = JSON.parse(c.day_hours || '{}') || {}; } catch {}
+  const spanOf = d => parseTimes(over[d]) || def;
+  const slotsFor = d => {
+    if (!days.includes(d)) return [];
+    const [open, close] = spanOf(d);
+    const out = [];
+    for (let h = Math.ceil(open); h + 1 <= close; h++) {
+      if (h === 12) continue; // lunch break
+      out.push(String(h).padStart(2, '0') + ':00');
+    }
+    return out;
+  };
+  return { days, open: def[0], close: def[1], slotsFor };
 }
 const dateOk = (s, days) => validDate(s) && s >= manilaToday() && s <= addDays(manilaToday(), 30) && days.includes(new Date(s + 'T00:00:00Z').getUTCDay());
 
@@ -599,7 +606,9 @@ app.get('/api/appointments/slots', limit(60, 15), h(async (req, res) => {
   const taken = await all("SELECT slot, COUNT(*) AS n FROM appointments WHERE date = ? AND status <> 'cancelled' GROUP BY slot", [date]);
   const now = manilaNow(), isToday = date === manilaToday();
   res.set('Cache-Control', 'no-store');
-  res.json(sch.slots.map(s => {
+
+  const wd = new Date(date + 'T00:00:00Z').getUTCDay();
+  res.json(sch.slotsFor(wd).map(s => {
     const n = Number((taken.find(t => t.slot === s) || {}).n || 0);
     return { slot: s, left: (isToday && s <= now) ? 0 : Math.max(0, SLOT_CAP - n) };
   }));
@@ -614,7 +623,7 @@ app.post('/api/appointments', limit(5, 15), h(async (req, res) => {
   if (c.length < 5) return res.status(400).json({ error: 'Please enter a valid phone number or email.' });
   if (p.length < 3) return res.status(400).json({ error: 'Please tell us the purpose of your visit.' });
   if (!dateOk(d, sch.days)) return res.status(400).json({ error: 'The Hall is closed on that day. Choose an open day within the next 30 days.' });
-  if (!sch.slots.includes(s)) return res.status(400).json({ error: 'Choose a time.' });
+  if (!sch.slotsFor(new Date(d + 'T00:00:00Z').getUTCDay()).includes(s)) return res.status(400).json({ error: 'Choose a time.' });
   if (d === manilaToday() && s <= manilaNow()) return res.status(400).json({ error: 'That time has already passed.' });
 
   let ref, saved = false;
@@ -633,58 +642,45 @@ app.post('/api/appointments', limit(5, 15), h(async (req, res) => {
   res.status(201).json({ ok: true, ref });
 }));
 
-app.post('/api/appointments', limit(5, 15), h(async (req, res) => {
-  const { name, contact, purpose, date, slot, website } = req.body || {};
-  if (website) return res.json({ ok: true }); // honeypot
-  const n = clean(name, 100), c = clean(contact, 120), p = clean(purpose, 200), d = clean(date, 10), s = clean(slot, 5);
-  if (n.length < 2) return res.status(400).json({ error: 'Please enter your full name.' });
-  if (c.length < 5) return res.status(400).json({ error: 'Please enter a valid phone number or email.' });
-  if (p.length < 3) return res.status(400).json({ error: 'Please tell us the purpose of your visit.' });
-  if (!dateOk(d)) return res.status(400).json({ error: 'Choose a weekday within the next 30 days.' });
-  if (!SLOTS.includes(s)) return res.status(400).json({ error: 'Choose a time.' });
-  if (d === manilaToday() && s <= manilaNow()) return res.status(400).json({ error: 'That time has already passed.' });
+// ---------- AI assistant (Cloudflare Workers AI) ----------
+// Change this line to use a different model from the Cloudflare dashboard model list.
+const AI_MODELS = [
+  '@cf/meta/llama-3.1-8b-instruct-fp8',
+  '@cf/meta/llama-3.1-8b-instruct-fast',
+  '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
+];
+let goodModel = null;
 
-  let ref, saved = false;
-  for (let i = 0; i < 5 && !saved; i++) {
-    ref = newApptRef();
+// the AI binding comes from worker.js (globalThis.__AI = env.AI)
+const getAI = () => {
+  if (globalThis.__AI) return globalThis.__AI;
+  try { return require('cloudflare:workers').env.AI || null; } catch { return null; }
+};
+
+const askAI = async (sysText, msgs) => {
+  const ai = getAI();
+  if (!ai) throw new Error('AI binding "AI" is missing. Add it to wrangler.jsonc and set globalThis.__AI in worker.js.');
+  const input = {
+    messages: [{ role: 'system', content: sysText }, ...msgs.map(m => ({ role: m.role, content: m.content }))],
+    max_tokens: 350,
+    temperature: 0.3
+  };
+  const order = goodModel ? [goodModel, ...AI_MODELS.filter(m => m !== goodModel)] : AI_MODELS;
+  let lastErr;
+  for (const model of order) {
     try {
-      // inserts only if the slot still has room
-      const r = await run(
-        "INSERT INTO appointments (ref, name, contact, purpose, date, slot) SELECT ?, ?, ?, ?, ?, ? WHERE (SELECT COUNT(*) FROM appointments WHERE date = ? AND slot = ? AND status <> 'cancelled') < ?",
-        [ref, n, c, p, d, s, d, s, SLOT_CAP]);
-      if (!r.rowsAffected) return res.status(409).json({ error: 'That time was just taken. Please choose another.' });
-      saved = true;
-    } catch (e) { if (i === 4) throw e; }
+      const out = await ai.run(model, input);
+      const text = typeof out === 'string' ? out
+        : typeof out?.response === 'string' ? out.response
+        : out?.choices?.[0]?.message?.content || '';
+      if (String(text).trim()) { goodModel = model; return String(text).trim(); }
+    } catch (e) {
+      lastErr = e;
+      console.error('Model failed:', model, e.message);
+    }
   }
-  await sendEmail(extractEmail(c), 'Your Barangay Hall visit ' + ref,
-    `Good day ${n},\n\nYour visit is booked.\nReference: ${ref}\nDate: ${d}\nTime: ${slotLabel(s)}\nPurpose: ${p}\n\nPlease bring a valid ID and arrive a few minutes early.\n\nBarangay Zapatera`);
-  res.status(201).json({ ok: true, ref });
-}));
-
-// ---------- AI assistant ----------
-
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-let GEMINI_MODEL = 'gemini-3.8-flash';
-async function pickModel() {
-  try {
-    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=100', {
-      headers: { 'x-goog-api-key': GEMINI_API_KEY },
-      signal: AbortSignal.timeout(10000)
-    });
-    const d = await r.json();
-    const names = (d.models || [])
-      .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
-      .map(m => m.name.replace('models/', ''))
-      .filter(n => !/preview|exp|image|tts|live|audio|embedding|thinking|robotics|computer/.test(n));
-    console.log('Models available to your key:', names.join(', '));
-    const pick = names.find(n => /flash-lite/.test(n)) || names.find(n => /flash/.test(n));
-    if (pick) { GEMINI_MODEL = pick; console.log('Chat model selected:', GEMINI_MODEL); }
-  } catch (e) {
-    console.error('Could not list models:', e.name);
-  }
-}
-let modelReady = null;
-const ensureModel = () => (modelReady ||= (GEMINI_API_KEY ? pickModel() : Promise.resolve()));
+  throw lastErr || new Error('No AI model answered');
+};
 
 const CHAT_SYSTEM = `You are the virtual assistant on the official website of Barangay Zapatera, Cebu City, Philippines.
 Many residents do not know what to ask or which service they need. Your job is to guide them step by step.
@@ -753,14 +749,14 @@ const chatSystem = async () => {
     (c.days || c.hours) && `- Office hours: ${[c.days, c.hours].filter(Boolean).join(', ')}`,
     c.address && `- Address: ${c.address}`,
     c.phone && `- Phone: ${c.phone}`,
+    c.day_hours && `- Special hours (day number 0=Sun to 6=Sat, JSON): ${c.day_hours}`,
     svcFacts
   ].filter(Boolean).join('\n');
   return facts ? CHAT_SYSTEM + '\n\nVerified details from the Barangay Hall (use these instead of any bracketed placeholder above):\n' + facts : CHAT_SYSTEM;
 };
 
 app.post('/api/chat', limit(20, 10), h(async (req, res) => {
-  if (!GEMINI_API_KEY) return res.status(503).json({ error: 'The assistant is not available right now.' });
-  await ensureModel();
+  if (!getAI()) return res.status(503).json({ error: 'The assistant is not available right now.' });
 
   const msgs = (Array.isArray(req.body?.messages) ? req.body.messages : [])
     .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
@@ -837,63 +833,16 @@ app.post('/api/chat', limit(20, 10), h(async (req, res) => {
     return res.json({ reply, suggestions: L.sug });
   }
 
-  if (refMatch) {
-    const ref = refMatch[0].toUpperCase();
-    const m = await get('SELECT id, ref, topic, status, created_at, updated_at FROM messages WHERE ref = ?', [ref]);
-    if (!m) {
-      return res.json({ reply: `I could not find the reference number ${ref}. Please check the number and try again.`, suggestions: ['Check another request', 'Contact the Barangay Hall'] });
-    }
-    const day = s => new Date(String(s).replace(' ', 'T') + 'Z').toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Manila' });
-    const label = { 'new': 'Received', 'in progress': 'In progress', 'resolved': 'Resolved' }[m.status] || m.status;
-    const note = {
-      'new': 'The Barangay Hall has received your message and will review it.',
-      'in progress': 'The Barangay Hall is working on your request.',
-      'resolved': 'Your request has been marked as resolved.'
-    }[m.status] || '';
-    let reply = `Reference ${m.ref} (${m.topic})\nStatus: ${label}\n${note}\nSent on ${day(m.created_at)}.`;
-    if (m.updated_at) reply += ` Last update on ${day(m.updated_at)}.`;
-    if (m.status === 'resolved') {
-      const proof = await latestProof(m.id);
-      if (proof && proof.note) reply += `\n\nWhat was done: ${proof.note}`;
-      const cnt = proof ? (await get('SELECT COUNT(*) AS n FROM proof_photos WHERE log_id = ?', [proof.id])).n : 0;
-      if (cnt) reply += `\n\nProof photos are available under "Check your request" on this website.`;
-    }
-    return res.json({ reply, suggestions: ['Check another request', 'Send a message'] });
-  }
-
   const sysText = await chatSystem();
-  const callGemini = (genConfig) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: sysText }] },
-      contents: msgs.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
-      generationConfig: genConfig
-    }),
-    signal: AbortSignal.timeout(20000)
-  });
 
-  let r, data;
+  let reply = '';
   try {
-    // first try with low thinking so replies come back fast
-    r = await callGemini({ maxOutputTokens: 350, temperature: 0.3, thinkingConfig: { thinkingLevel: 'minimal' } });    
-    data = await r.json().catch(() => ({}));
-    // if the model rejects that setting, retry once without it
-    if (r.status === 400 && /thinking/i.test(data?.error?.message || '')) {
-    r = await callGemini({ maxOutputTokens: 350, temperature: 0.3 });
-      data = await r.json().catch(() => ({}));
-    }
+    reply = await askAI(sysText, msgs);
   } catch (e) {
-    console.error('Chat API timeout or network error:', e.name);
-    return res.status(504).json({ error: 'The assistant is taking too long. Please try again.' });
-  }
-
-  if (!r.ok) {
-    console.error('Chat API error', r.status, data?.error?.message || '');
+    console.error('Workers AI error:', e.message);
     return res.status(502).json({ error: 'The assistant is busy. Please try again in a moment.' });
   }
 
-  let reply = (data.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('\n').trim();
   let suggestions = [];
   const sm = reply.match(/\n?\s*SUGGEST:\s*(.+)\s*$/i);
   if (sm) {
@@ -1083,7 +1032,7 @@ app.get('/api/admin/appointments/overview', auth, ready, can('admin', 'staff'), 
   res.set('Cache-Control', 'no-store');
   res.json({
     date, cap: SLOT_CAP,
-    slots: sch.slots.map(s => ({ slot: s, booked: Number((rows.find(r => r.slot === s) || {}).n || 0) }))
+    slots: sch.slotsFor(new Date(date + 'T00:00:00Z').getUTCDay()).map(s => ({ slot: s, booked: Number((rows.find(r => r.slot === s) || {}).n || 0) }))
   });
 }));
 
@@ -1309,6 +1258,7 @@ const CONTENT = [
   { key: 'hero_text', group: 'Top of the page', label: 'Short intro under the headline', max: 300, multi: true, def: 'Request documents, read official announcements, and reach the Barangay Hall quickly and clearly.' },
   { key: 'days', group: 'Hall hours and contact details', label: 'Days open', max: 60, def: 'Mon to Fri' },
   { key: 'hours', group: 'Hall hours and contact details', label: 'Office hours', max: 60, def: '8:00 AM to 5:00 PM' },
+  { key: 'day_hours', group: 'Hall hours and contact details', label: 'Hours for specific days', max: 600, def: '' },
   { key: 'address', group: 'Hall hours and contact details', label: 'Barangay Hall address', max: 200, def: 'Barangay Hall, Zapatera, Cebu City' },
   { key: 'phone', group: 'Hall hours and contact details', label: 'Phone number', max: 40, def: '' },
   { key: 'email', group: 'Hall hours and contact details', label: 'Email address', max: 120, def: '' },

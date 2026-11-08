@@ -4,6 +4,7 @@
   "compatibility_date": "2025-10-01",
   "compatibility_flags": ["nodejs_compat"],
   "assets": { "directory": "./public" },
+  "ai": { "binding": "AI" },
   "vars": {
     "NODE_ENV": "production",
     "EMAIL_FROM_EMAIL": "michaeljohnsilva5@gmail.com",
