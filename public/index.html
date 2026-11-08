@@ -628,7 +628,7 @@
       <label>Full name<input name="n" required maxlength="100" autocomplete="name"></label>
       <label>Phone or email<input name="c" required minlength="5" maxlength="120"><small style="font-weight:400;color:var(--muted)">Use an email address to get a confirmation.</small></label>
       <label>Purpose of visit<input name="p" required minlength="3" maxlength="200" placeholder="e.g. Barangay Clearance for a job application"></label>
-      <label>Date (Monday to Friday)<input type="date" name="d" id="apd" required></label>
+      <label><span id="apdl">Date (Monday to Friday)</span><input type="date" name="d" id="apd" required></label>
       <label>Time<select name="s" id="aps" required><option value="">Choose a date first</option></select></label>
       <button class="btn red" type="submit" id="apb">Book appointment</button>
       <div id="apok" role="status"></div>
@@ -1650,6 +1650,13 @@ var HOURS={days:[1,2,3,4,5],open:8,close:17};
   var today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Manila'});
   function addDays(str,n){var x=new Date(str+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10)}
   d.min=today;d.max=addDays(today,30);
+    var OPEN=[1,2,3,4,5],NAMES=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  fetch('/api/appointments/schedule',{cache:'no-store'}).then(function(r){return r.json()}).then(function(c){
+    if(Array.isArray(c.days)&&c.days.length){
+      OPEN=c.days;
+      document.getElementById('apdl').textContent='Date ('+c.days.slice().sort(function(a,b){return a-b}).map(function(i){return NAMES[i]}).join(', ')+')';
+    }
+  }).catch(function(){});
   function t12(t){var p=t.split(':'),h=+p[0];return ((h+11)%12+1)+':'+p[1]+' '+(h>=12?'PM':'AM')}
   function opt(v,t,dis){var o=document.createElement('option');o.value=v;o.textContent=t;o.disabled=!!dis;return o}
 
@@ -1657,7 +1664,7 @@ var HOURS={days:[1,2,3,4,5],open:8,close:17};
     s.replaceChildren();
     if(!d.value){s.append(opt('','Choose a date first'));return}
     var wd=new Date(d.value+'T00:00:00Z').getUTCDay();
-    if(wd===0||wd===6){s.append(opt('','The Hall is closed on weekends. Pick a weekday.'));return}
+    if(OPEN.indexOf(wd)<0){s.append(opt('','The Hall is closed on that day. Pick an open day.'));return}
     s.append(opt('','Loading times...'));
     try{
       var r=await fetch('/api/appointments/slots?date='+encodeURIComponent(d.value),{cache:'no-store'});

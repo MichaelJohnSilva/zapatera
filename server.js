@@ -339,6 +339,7 @@ const ACT_RULES = [
   ['POST', /^\/api\/admin\/officials$/, () => 'Added an official'],
   ['PATCH', /^\/api\/admin\/officials\/\d+$/, () => 'Edited an official'],
   ['DELETE', /^\/api\/admin\/officials\/\d+$/, () => 'Removed an official'],
+  ['DELETE', /^\/api\/admin\/appointments\/\d+$/, () => 'Deleted an appointment'],
   ['POST', /^\/api\/admin\/users$/, b => 'Created account ' + (b.username || '')],
   ['PATCH', /^\/api\/admin\/users\/\d+$/, b =>
     typeof b.password === 'string' ? 'Reset an account password'
@@ -506,7 +507,8 @@ app.get('/api/status/:ref/photo/:n', limit(120, 15), h(async (req, res) => {
 const extractEmail = s => (String(s).match(/[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+/) || [])[0] || null;
 async function sendEmail(to, subject, text) {
   const key = process.env.BREVO_API_KEY, fromEmail = process.env.EMAIL_FROM_EMAIL;
-  if (!key || !fromEmail || !to) return;
+  if (!to) return console.log('Email skipped: no email address');
+  if (!key || !fromEmail) return console.error('Email skipped: BREVO_API_KEY or EMAIL_FROM_EMAIL is missing');
   try {
     const r = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
@@ -519,9 +521,12 @@ async function sendEmail(to, subject, text) {
       }),
       signal: AbortSignal.timeout(8000)
     });
-    if (!r.ok) console.error('Email failed', r.status);
-  } catch (e) { console.error('Email error', e.name); }
+    const body = await r.text();
+    if (!r.ok) console.error('Email failed', r.status, body);
+    else console.log('Email sent to', to, body);
+  } catch (e) { console.error('Email error', e.name, e.message); }
 }
+
 async function notifyStatus(m, status, note) {
   const to = extractEmail(m.contact);
   if (!to) return;
@@ -537,26 +542,95 @@ async function notifyStatus(m, status, note) {
 }
 
 // ---------- Appointments (public) ----------
-const SLOTS = ['08:00', '09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00'];
 const SLOT_CAP = 3; // people per time slot
 const manilaToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 const manilaNow = () => new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 const addDays = (s, n) => { const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
-const isWeekday = s => { const d = new Date(s + 'T00:00:00Z').getUTCDay(); return d >= 1 && d <= 5; };
-const dateOk = s => validDate(s) && s >= manilaToday() && s <= addDays(manilaToday(), 30) && isWeekday(s);
 const slotLabel = t => { const [h, m] = t.split(':'); return ((+h + 11) % 12 + 1) + ':' + m + ' ' + (+h >= 12 ? 'PM' : 'AM'); };
 const newApptRef = () => 'APT-' + Array.from(crypto.randomBytes(6), b => REF_CHARS[b % REF_CHARS.length]).join('');
 
+// the saved "Days open" and "Office hours" decide which dates and times can be booked
+const DAY_NAMES = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+function parseDays(s) {
+  const f = String(s || '').toLowerCase().match(/sun|mon|tue|wed|thu|fri|sat/g);
+  if (!f || !f.length) return null;
+  const a = f.map(x => DAY_NAMES.indexOf(x));
+  if (/\bto\b|-|\u2013/.test(s) && a.length === 2) {
+    const r = []; let i = a[0];
+    while (true) { r.push(i); if (i === a[1]) break; i = (i + 1) % 7; }
+    return r;
+  }
+  return a;
+}
+function parseTimes(s) {
+  const m = String(s || '').match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/gi);
+  if (!m || m.length < 2) return null;
+  const out = m.slice(0, 2).map(t => {
+    const p = /(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i.exec(t);
+    let h = +p[1] % 12; if (/pm/i.test(p[3])) h += 12;
+    return h + (p[2] ? +p[2] / 60 : 0);
+  });
+  return out[1] > out[0] ? out : null;
+}
+async function getSchedule() {
+  const rows = await all("SELECT name, value FROM site_content WHERE name IN ('days', 'hours')");
+  const c = {}; rows.forEach(r => { c[r.name] = r.value; });
+  const days = parseDays(c.days) || [1, 2, 3, 4, 5];
+  const [open, close] = parseTimes(c.hours) || [8, 17];
+  const slots = [];
+  for (let h = Math.ceil(open); h + 1 <= close; h++) {
+    if (h === 12) continue; // lunch break
+    slots.push(String(h).padStart(2, '0') + ':00');
+  }
+  return { days, open, close, slots };
+}
+const dateOk = (s, days) => validDate(s) && s >= manilaToday() && s <= addDays(manilaToday(), 30) && days.includes(new Date(s + 'T00:00:00Z').getUTCDay());
+
+app.get('/api/appointments/schedule', h(async (req, res) => {
+  const s = await getSchedule();
+  res.set('Cache-Control', 'no-store');
+  res.json({ days: s.days, open: s.open, close: s.close });
+}));
+
 app.get('/api/appointments/slots', limit(60, 15), h(async (req, res) => {
   const date = clean(req.query.date, 10);
-  if (!dateOk(date)) return res.status(400).json({ error: 'Choose a weekday within the next 30 days.' });
+  const sch = await getSchedule();
+  if (!dateOk(date, sch.days)) return res.status(400).json({ error: 'The Hall is closed on that day. Choose an open day within the next 30 days.' });
   const taken = await all("SELECT slot, COUNT(*) AS n FROM appointments WHERE date = ? AND status <> 'cancelled' GROUP BY slot", [date]);
   const now = manilaNow(), isToday = date === manilaToday();
   res.set('Cache-Control', 'no-store');
-  res.json(SLOTS.map(s => {
+  res.json(sch.slots.map(s => {
     const n = Number((taken.find(t => t.slot === s) || {}).n || 0);
     return { slot: s, left: (isToday && s <= now) ? 0 : Math.max(0, SLOT_CAP - n) };
   }));
+}));
+
+app.post('/api/appointments', limit(5, 15), h(async (req, res) => {
+  const { name, contact, purpose, date, slot, website } = req.body || {};
+  if (website) return res.json({ ok: true }); // honeypot
+  const n = clean(name, 100), c = clean(contact, 120), p = clean(purpose, 200), d = clean(date, 10), s = clean(slot, 5);
+  const sch = await getSchedule();
+  if (n.length < 2) return res.status(400).json({ error: 'Please enter your full name.' });
+  if (c.length < 5) return res.status(400).json({ error: 'Please enter a valid phone number or email.' });
+  if (p.length < 3) return res.status(400).json({ error: 'Please tell us the purpose of your visit.' });
+  if (!dateOk(d, sch.days)) return res.status(400).json({ error: 'The Hall is closed on that day. Choose an open day within the next 30 days.' });
+  if (!sch.slots.includes(s)) return res.status(400).json({ error: 'Choose a time.' });
+  if (d === manilaToday() && s <= manilaNow()) return res.status(400).json({ error: 'That time has already passed.' });
+
+  let ref, saved = false;
+  for (let i = 0; i < 5 && !saved; i++) {
+    ref = newApptRef();
+    try {
+      const r = await run(
+        "INSERT INTO appointments (ref, name, contact, purpose, date, slot) SELECT ?, ?, ?, ?, ?, ? WHERE (SELECT COUNT(*) FROM appointments WHERE date = ? AND slot = ? AND status <> 'cancelled') < ?",
+        [ref, n, c, p, d, s, d, s, SLOT_CAP]);
+      if (!r.rowsAffected) return res.status(409).json({ error: 'That time was just taken. Please choose another.' });
+      saved = true;
+    } catch (e) { if (i === 4) throw e; }
+  }
+  await sendEmail(extractEmail(c), 'Your Barangay Hall visit ' + ref,
+    `Good day ${n},\n\nYour visit is booked.\nReference: ${ref}\nDate: ${d}\nTime: ${slotLabel(s)}\nPurpose: ${p}\n\nPlease bring a valid ID and arrive a few minutes early.\n\nBarangay Zapatera`);
+  res.status(201).json({ ok: true, ref });
 }));
 
 app.post('/api/appointments', limit(5, 15), h(async (req, res) => {
@@ -1001,6 +1075,18 @@ app.get('/api/admin/appointments', auth, ready, can('admin', 'staff'), h(async (
   res.json(await all('SELECT id, ref, name, contact, purpose, date, slot, status, created_at FROM appointments ORDER BY date DESC, slot ASC LIMIT 200'));
 }));
 
+app.get('/api/admin/appointments/overview', auth, ready, can('admin', 'staff'), h(async (req, res) => {
+  const q = clean(req.query.date, 10);
+  const date = validDate(q) ? q : manilaToday();
+  const sch = await getSchedule();
+  const rows = await all("SELECT slot, COUNT(*) AS n FROM appointments WHERE date = ? AND status <> 'cancelled' GROUP BY slot", [date]);
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    date, cap: SLOT_CAP,
+    slots: sch.slots.map(s => ({ slot: s, booked: Number((rows.find(r => r.slot === s) || {}).n || 0) }))
+  });
+}));
+
 app.patch('/api/admin/appointments/:id', auth, ready, can('admin', 'staff'), h(async (req, res) => {
   const id = idParam(req), status = req.body?.status;
   if (!['booked', 'done', 'cancelled'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
@@ -1012,6 +1098,16 @@ app.patch('/api/admin/appointments/:id', auth, ready, can('admin', 'staff'), h(a
     await sendEmail(extractEmail(a.contact), 'Your Barangay Hall visit ' + a.ref + ' was cancelled',
       `Good day,\n\nYour visit ${a.ref} on ${a.date} at ${slotLabel(a.slot)} was cancelled by the Barangay Hall. You may book another time on our website.\n\nBarangay Zapatera`);
   }
+  res.json({ ok: true });
+}));
+
+app.delete('/api/admin/appointments/:id', auth, ready, can('admin'), h(async (req, res) => {
+  const id = idParam(req);
+  const a = await get('SELECT ref, status FROM appointments WHERE id = ?', [id]);
+  if (!a) return res.status(404).json({ error: 'Appointment not found.' });
+  if (a.status === 'booked') return res.status(400).json({ error: 'Mark this appointment as done or cancelled before deleting it.' });
+  await run('DELETE FROM appointments WHERE id = ?', [id]);
+  res.locals.detail = a.ref;
   res.json({ ok: true });
 }));
 

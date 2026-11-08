@@ -477,8 +477,17 @@ footer span{opacity:.8}
       </form>
       <div id="olist"></div>
     </section>
-        <section id="sec-appt" class="hide">
+
+    <section id="sec-appt" class="hide">
       <div class="ph"><h2>Appointments</h2><p>Residents who booked a visit through the website. Cancelling sends them an email if they gave one.</p></div>
+      <div class="card" id="slotbox">
+        <div class="row">
+          <b>Slot availability</b>
+          <input type="date" id="sd" style="width:auto">
+        </div>
+        <div id="slotgrid" class="acts" style="margin-top:12px"></div>
+        <div class="meta" style="margin-top:8px">Red means full. Cancelled appointments free the slot.</div>
+      </div>
       <div id="applist"></div>
     </section>
 
@@ -486,6 +495,7 @@ footer span{opacity:.8}
       <div class="ph"><h2>Activity log</h2><p>Who changed what and when. Shows the latest 200 actions.</p></div>
       <div id="actlist"></div>
     </section>
+
     <section id="sec-site" class="hide">
       <div class="ph"><h2>Barangay Info</h2><p>Update the barangay's official details here: about, contact, services, how to request a document, and hotlines. They show on the public website and are also used by the chat assistant. Leave a field blank to show the placeholder text.</p></div>
       <div class="sgrid">
@@ -1048,13 +1058,13 @@ async function loadMessages(useCache) {
 
     const acts = el('div', { className: 'acts' }, sel, hbtn);
     if (user.role === 'admin') {
-    const del = el('button', { className: 'btn sm d', textContent: 'Delete' });
-    del.onclick = async () => {
-      if (!confirm('Delete this message and its history?')) return;
-      try { await api('/api/admin/messages/' + m.id, 'DELETE'); loadMessages(); } catch (e) { alert(e.message); }
-    };
-    acts.append(del);
-  }
+      const del = el('button', { className: 'btn sm d', textContent: 'Delete' });
+      del.onclick = async () => {
+        if (!confirm('Delete this message and its history?')) return;
+        try { await api('/api/admin/messages/' + m.id, 'DELETE'); loadMessages(); } catch (e) { alert(e.message); }
+      };
+      acts.append(del);
+    }
 
     /* evidence photos sent by the resident (optional) */
     const evBox = (m.evidence && m.evidence.length) ? el('div', { className: 'stack', style: 'margin:8px 0' },
@@ -1412,8 +1422,7 @@ $('sf').onsubmit = async e => {
   busy($('sbtn'), false);
 };
 
-/* ---------- staff list, filters, sound ---------- */
-
+/* ---------- message filters and sound ---------- */
 const pad2 = n => String(n).padStart(2, '0');
 const localKey = s => { const d = new Date(s.replace(' ', 'T') + 'Z'); return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); };
 
@@ -1466,8 +1475,25 @@ $('snd').onchange = () => {
 };
 
 /* ---------- appointments ---------- */
+async function loadSlotOverview() {
+  try {
+    const d = $('sd').value;
+    const o = await api('/api/admin/appointments/overview' + (d ? '?date=' + d : ''));
+    if (!$('sd').value) $('sd').value = o.date;
+    $('slotgrid').replaceChildren(...o.slots.map(s => {
+      const full = s.booked >= o.cap;
+      return el('span', {
+        className: 'badge ' + (full ? 'off' : s.booked ? '' : 'on'),
+        textContent: evTime(s.slot) + ' | ' + s.booked + '/' + o.cap + (full ? ' FULL' : '')
+      });
+    }));
+  } catch (e) {}
+}
+$('sd').addEventListener('change', loadSlotOverview);
+
 async function loadAppointments() {
   try {
+    loadSlotOverview();
     const rows = await api('/api/admin/appointments');
     const box = $('applist'); box.replaceChildren();
     if (!rows.length) { box.append(el('div', { className: 'empty', textContent: 'No appointments yet.' })); return; }
@@ -1480,11 +1506,21 @@ async function loadAppointments() {
         try { await api('/api/admin/appointments/' + a.id, 'PATCH', { status: sel.value }); toast('Appointment updated'); loadAppointments(); }
         catch (e) { alert(e.message); }
       };
+            const acts = el('div', { className: 'acts' }, sel);
+      if (user.role === 'admin' && a.status !== 'booked') {
+        const del = el('button', { className: 'btn sm d', textContent: 'Delete' });
+        del.onclick = async () => {
+          if (!confirm('Delete appointment ' + a.ref + ' permanently?')) return;
+          try { await api('/api/admin/appointments/' + a.id, 'DELETE'); toast('Appointment deleted'); loadAppointments(); }
+          catch (e) { alert(e.message); }
+        };
+        acts.append(del);
+      }
       box.append(el('div', { className: 'card item ' + cls },
         el('div', { className: 'row' }, el('b', { textContent: a.name }), el('span', { className: 'badge ' + cls, textContent: a.status })),
         el('div', { className: 'meta', textContent: a.ref + ' | ' + evDay(a.date) + ' at ' + evTime(a.slot) + ' | ' + a.contact }),
         el('div', { className: 'msg', textContent: a.purpose }),
-        el('div', { className: 'acts' }, sel)));
+        acts));
     });
   } catch (e) {}
 }
@@ -1545,8 +1581,8 @@ async function enter(u) {
   $('stw-usr').classList.toggle('hide', u.role !== 'admin');
   tab('ann');
   await loadAnnouncements();
-if (canMsg) { await loadMessages(); loadAppointments(); startPolling(); }  
-if (u.role === 'admin') { await loadUsers(); await loadOfficials(); await loadSite(); }
+  if (canMsg) { await loadMessages(); loadAppointments(); startPolling(); }
+  if (u.role === 'admin') { await loadUsers(); await loadOfficials(); await loadSite(); }
 }
 
 /* ---------- events ---------- */
