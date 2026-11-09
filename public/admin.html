@@ -262,6 +262,18 @@
   .dcol b{font-size:.78rem}
   .dcol span{font-size:.72rem;color:var(--muted)}
 
+  /* appointments */
+  .seg{display:flex;gap:8px;overflow-x:auto;margin-bottom:14px;padding-bottom:4px}
+  .seg button{flex:none;display:inline-flex;gap:8px;align-items:center;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:99px;padding:8px 16px;font-weight:600;font-size:.88rem;cursor:pointer}
+  .seg button.on{background:var(--brand);border-color:var(--brand);color:#fff}
+  .seg .n{background:var(--tint);color:var(--link);border-radius:99px;font-size:.72rem;padding:0 8px}
+  .seg button.on .n{background:rgba(255,255,255,.25);color:#fff}
+  .dayh{font:800 1.05rem var(--head);margin:20px 0 8px}
+  .appt{display:grid;grid-template-columns:90px 1fr;gap:14px}
+  .appt .time{font:800 1.1rem/1.2 var(--head);color:var(--link)}
+  @media(max-width:560px){.appt{grid-template-columns:1fr;gap:4px}}
+  details.card summary{cursor:pointer}
+
   @keyframes toastIn{from{opacity:0;transform:translate(-50%,14px)}to{opacity:1;transform:translate(-50%,0)}}
   @keyframes spin{to{transform:rotate(360deg)}}
   @keyframes shake{0%,100%{transform:none}20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}
@@ -351,8 +363,7 @@
       <nav aria-label="Sections">
         <button data-go="ann" class="on">Announcements</button>
         <button data-go="msgs" id="nav-msgs">Messages <span class="cnt hide" id="mcnt"></span></button>
-        <button data-go="appts" id="nav-appts">Appointments</button>
-        <button data-go="accts" id="nav-accts">Accounts</button>
+        <button data-go="appts" id="nav-appts">Appointments <span class="cnt hide" id="acnt"></span></button>        <button data-go="accts" id="nav-accts">Accounts</button>
         <button data-go="offs" id="nav-offs">Officials</button>
         <button data-go="site" id="nav-site">Barangay Info</button>
         <button data-go="prof" id="nav-prof">My profile</button>
@@ -370,6 +381,7 @@
     <div class="stats"><div class="wrap">
       <div class="stat"><strong id="st-ann">0</strong><span>Announcements published</span></div>
       <div class="stat" id="stw-msg"><strong id="st-new">0</strong><span>New messages</span></div>
+      <div class="stat" id="stw-appt"><strong id="st-appt">0</strong><span>Upcoming visits</span></div>
       <div class="stat" id="stw-usr"><strong id="st-usr">0</strong><span>Active accounts</span></div>
     </div></div>
 
@@ -478,18 +490,26 @@
         <div id="olist"></div>
       </section>
 
-      <section id="sec-appt" class="hide">
-        <div class="ph"><h2>Appointments</h2><p>Residents who booked a visit through the website. Cancelling sends them an email if they gave one.</p></div>
-        <div class="card" id="slotbox">
-          <div class="row">
-            <b>Slot availability</b>
-            <input type="date" id="sd" style="width:auto">
-          </div>
-          <div id="slotgrid" class="acts" style="margin-top:12px"></div>
-          <div class="meta" style="margin-top:8px">Red means full. Cancelled appointments free the slot.</div>
-        </div>
-        <div id="applist"></div>
-      </section>
+  <section id="sec-appt" class="hide">
+  <div class="ph"><h2>Appointments</h2><p>Residents who booked a visit through the website. Cancelling sends them an email if they gave one.</p></div>
+
+  <div class="seg" id="apSeg">
+    <button type="button" data-f="upcoming" class="on">Upcoming <span class="n" id="apc-upcoming">0</span></button>
+    <button type="button" data-f="today">Today <span class="n" id="apc-today">0</span></button>
+    <button type="button" data-f="past">Past <span class="n" id="apc-past">0</span></button>
+    <button type="button" data-f="cancelled">Cancelled <span class="n" id="apc-cancelled">0</span></button>
+    <button type="button" data-f="all">All <span class="n" id="apc-all">0</span></button>
+  </div>
+  <div class="card"><input id="apq" type="search" placeholder="Search name, contact, reference, or purpose"></div>
+  <div id="applist"></div>
+
+  <details class="card" id="slotbox">
+    <summary><b>Slot availability</b></summary>
+    <div class="row" style="margin-top:12px"><span class="meta">Pick a date</span><input type="date" id="sd" style="width:auto"></div>
+    <div id="slotgrid" class="acts" style="margin-top:12px"></div>
+    <div class="meta" style="margin-top:8px">Red means full. Cancelled appointments free the slot.</div>
+  </details>
+</section>
 
       <section id="sec-act" class="hide">
         <div class="ph"><h2>Activity log</h2><p>Who changed what and when. Shows the latest 200 actions.</p></div>
@@ -1525,37 +1545,90 @@
   }
   $('sd').addEventListener('change', loadSlotOverview);
 
+    let apFilter = 'upcoming', cachedAppts = [];
+  const todayKey = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+  const tomorrowKey = () => { const d = new Date(todayKey() + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); };
+
+  function apMatch(a, f) {
+    const t = todayKey();
+    if (f === 'upcoming') return a.date >= t && a.status === 'booked';
+    if (f === 'today') return a.date === t && a.status !== 'cancelled';
+    if (f === 'past') return a.date < t && a.status !== 'cancelled';
+    if (f === 'cancelled') return a.status === 'cancelled';
+    return true;
+  }
+  function setApptBadge(n) {
+    $('acnt').textContent = n; $('acnt').classList.toggle('hide', !n);
+    $('st-appt').textContent = n;
+  }
+  const dayLabel = d => d === todayKey() ? 'Today, ' + evDay(d) : d === tomorrowKey() ? 'Tomorrow, ' + evDay(d) : new Date(d + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' });
+
+  async function setAppt(a, status) {
+    if (status === 'cancelled' && !confirm('Cancel this appointment? The resident will be emailed if they gave an email.')) return;
+    try { await api('/api/admin/appointments/' + a.id, 'PATCH', { status }); toast('Appointment updated'); loadAppointments(); }
+    catch (e) { alert(e.message); }
+  }
+
+  function drawAppts() {
+    ['upcoming', 'today', 'past', 'cancelled', 'all'].forEach(f => { $('apc-' + f).textContent = cachedAppts.filter(a => apMatch(a, f)).length; });
+    const q = $('apq').value.trim().toLowerCase();
+    const rows = cachedAppts.filter(a => apMatch(a, apFilter) && (!q || (a.name + ' ' + a.contact + ' ' + a.ref + ' ' + a.purpose).toLowerCase().includes(q)));
+    const dir = (apFilter === 'past' || apFilter === 'all') ? -1 : 1;
+    rows.sort((x, y) => (x.date + x.slot < y.date + y.slot ? -1 : 1) * dir);
+
+    const box = $('applist'); box.replaceChildren();
+    if (!rows.length) { box.append(el('div', { className: 'empty', textContent: cachedAppts.length ? 'No appointments here.' : 'No appointments yet.' })); return; }
+
+    let last = '';
+    rows.forEach(a => {
+      if (a.date !== last) { last = a.date; box.append(el('div', { className: 'dayh', textContent: dayLabel(a.date) })); }
+      const cls = a.status === 'done' ? 'resolved' : a.status === 'booked' ? 'new' : '';
+      const acts = el('div', { className: 'acts' });
+      if (a.status === 'booked') {
+        const done = el('button', { className: 'btn sm red', textContent: 'Mark done' });
+        done.onclick = () => setAppt(a, 'done');
+        const cancel = el('button', { className: 'btn sm d', textContent: 'Cancel' });
+        cancel.onclick = () => setAppt(a, 'cancelled');
+        acts.append(done, cancel);
+      } else if (a.status === 'done') {
+        const undo = el('button', { className: 'btn sm', textContent: 'Undo' });
+        undo.onclick = () => setAppt(a, 'booked');
+        acts.append(undo);
+      }
+      if (user.role === 'admin' && a.status !== 'booked') {
+        const del = el('button', { className: 'btn sm d', textContent: 'Delete' });
+        del.onclick = async () => {
+          if (!confirm('Delete appointment ' + a.ref + ' permanently?')) return;
+          try { await api('/api/admin/appointments/' + a.id, 'DELETE'); toast('Appointment deleted'); loadAppointments(); }
+          catch (e) { alert(e.message); }
+        };
+        acts.append(del);
+      }
+      box.append(el('div', { className: 'card item ' + cls },
+        el('div', { className: 'appt' },
+          el('div', { className: 'time', textContent: evTime(a.slot) }),
+          el('div', {},
+            el('div', { className: 'row' }, el('b', { textContent: a.name }), el('span', { className: 'badge ' + cls, textContent: a.status })),
+            el('div', { className: 'meta', textContent: a.ref + ' | ' + a.contact }),
+            el('div', { className: 'msg', textContent: a.purpose }),
+            acts))));
+    });
+  }
+
+  document.querySelectorAll('#apSeg button').forEach(b => b.onclick = () => {
+    apFilter = b.dataset.f;
+    document.querySelectorAll('#apSeg button').forEach(x => x.classList.toggle('on', x === b));
+    drawAppts();
+  });
+  $('apq').addEventListener('input', drawAppts);
+
   async function loadAppointments() {
     try {
       loadSlotOverview();
-      const rows = await api('/api/admin/appointments');
-      const box = $('applist'); box.replaceChildren();
-      if (!rows.length) { box.append(el('div', { className: 'empty', textContent: 'No appointments yet.' })); return; }
-      rows.forEach(a => {
-        const cls = a.status === 'done' ? 'resolved' : a.status === 'booked' ? 'new' : '';
-        const sel = el('select');
-        ['booked', 'done', 'cancelled'].forEach(s => sel.append(el('option', { value: s, textContent: s, selected: s === a.status })));
-        sel.onchange = async () => {
-          if (sel.value === 'cancelled' && !confirm('Cancel this appointment? The resident will be emailed if they gave an email.')) { sel.value = a.status; return; }
-          try { await api('/api/admin/appointments/' + a.id, 'PATCH', { status: sel.value }); toast('Appointment updated'); loadAppointments(); }
-          catch (e) { alert(e.message); }
-        };
-              const acts = el('div', { className: 'acts' }, sel);
-        if (user.role === 'admin' && a.status !== 'booked') {
-          const del = el('button', { className: 'btn sm d', textContent: 'Delete' });
-          del.onclick = async () => {
-            if (!confirm('Delete appointment ' + a.ref + ' permanently?')) return;
-            try { await api('/api/admin/appointments/' + a.id, 'DELETE'); toast('Appointment deleted'); loadAppointments(); }
-            catch (e) { alert(e.message); }
-          };
-          acts.append(del);
-        }
-        box.append(el('div', { className: 'card item ' + cls },
-          el('div', { className: 'row' }, el('b', { textContent: a.name }), el('span', { className: 'badge ' + cls, textContent: a.status })),
-          el('div', { className: 'meta', textContent: a.ref + ' | ' + evDay(a.date) + ' at ' + evTime(a.slot) + ' | ' + a.contact }),
-          el('div', { className: 'msg', textContent: a.purpose }),
-          acts));
-      });
+      cachedAppts = await api('/api/admin/appointments');
+      lastApptId = cachedAppts.length ? Math.max(...cachedAppts.map(a => a.id)) : 0;
+      setApptBadge(cachedAppts.filter(a => apMatch(a, 'upcoming')).length);
+      drawAppts();
     } catch (e) {}
   }
 
@@ -1577,7 +1650,7 @@
   }
 
   /* ---------- live new-message alerts (checks every 3 seconds) ---------- */
-  let lastMsgId = null, pollT = null;
+  let lastMsgId = null, lastApptId = null, pollT = null;
 
   async function pollMessages() {
     if (!user || document.hidden) return;
@@ -1585,17 +1658,27 @@
       const r = await fetch('/api/admin/messages-poll');
       if (!r.ok) return;
       const d = await r.json();
-      if (lastMsgId === null) { lastMsgId = d.latest; return; }
-      if (d.latest > lastMsgId) {
+
+      if (lastMsgId === null) lastMsgId = d.latest;
+      else if (d.latest > lastMsgId) {
         lastMsgId = d.latest;
         toast('New message from ' + d.name + ' (' + d.topic + ')');
         beep();
         loadMessages();
       }
+
+      setApptBadge(d.appt_new);
+      if (lastApptId === null) lastApptId = d.appt_latest;
+      else if (d.appt_latest > lastApptId) {
+        lastApptId = d.appt_latest;
+        toast('New visit booked by ' + d.appt_name + ': ' + evDay(d.appt_date) + ' at ' + evTime(d.appt_slot));
+        beep();
+        loadAppointments();
+      }
     } catch (e) {}
   }
   function startPolling() { clearInterval(pollT); pollT = setInterval(pollMessages, 3000); }
-  function stopPolling() { clearInterval(pollT); pollT = null; lastMsgId = null; }
+  function stopPolling() { clearInterval(pollT); pollT = null; lastMsgId = null; lastApptId = null; }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) pollMessages(); });
 
   async function enter(u) {
@@ -1613,6 +1696,7 @@
     $('nav-offs').classList.toggle('hide', u.role !== 'admin');
     $('nav-site').classList.toggle('hide', u.role !== 'admin');
     $('stw-usr').classList.toggle('hide', u.role !== 'admin');
+    $('stw-appt').classList.toggle('hide', !canMsg);
     tab('ann');
     await loadAnnouncements();
     if (canMsg) { await loadMessages(); loadAppointments(); startPolling(); }

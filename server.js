@@ -931,8 +931,14 @@ app.get('/api/staff/avatar/:id', auth, ready, h(async (req, res) => {
 app.get('/api/admin/messages-poll', auth, ready, can('admin', 'staff'), h(async (req, res) => {
   const last = await get('SELECT id, name, topic FROM messages ORDER BY id DESC LIMIT 1');
   const n = (await get("SELECT COUNT(*) AS n FROM messages WHERE status = 'new'")).n;
+  const ap = await get('SELECT id, name, date, slot FROM appointments ORDER BY id DESC LIMIT 1');
+  const an = (await get("SELECT COUNT(*) AS n FROM appointments WHERE status = 'booked' AND date >= ?", [manilaToday()])).n;
   res.set('Cache-Control', 'no-store');
-  res.json({ latest: last ? last.id : 0, name: last ? last.name : '', topic: last ? last.topic : '', new: Number(n) });
+  res.json({
+    latest: last ? last.id : 0, name: last ? last.name : '', topic: last ? last.topic : '', new: Number(n),
+    appt_latest: ap ? ap.id : 0, appt_name: ap ? ap.name : '', appt_date: ap ? ap.date : '', appt_slot: ap ? ap.slot : '',
+    appt_new: Number(an)
+  });
 }));
 
 // ---------- Messages (admin and kagawad) ----------
