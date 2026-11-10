@@ -278,6 +278,16 @@
   @keyframes spin{to{transform:rotate(360deg)}}
   @keyframes shake{0%,100%{transform:none}20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}
   @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+  
+  /* resident details panel */
+  .rdet{margin-top:12px;padding:14px;background:var(--alt);border:1px solid var(--line);border-radius:8px}
+  .rdet dl{margin:0}
+  .rdet dl div{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-top:1px solid var(--line);font-size:.88rem}
+  .rdet dl div:first-child{border-top:0}
+  .rdet dt{color:var(--muted);flex:none}
+  .rdet dd{margin:0;font-weight:600;text-align:right;overflow-wrap:anywhere}
+  .rdet .idimg{display:block;margin-top:12px;max-width:100%;max-height:260px;border-radius:8px;border:1px solid var(--line)}
+
   </style>
   </head>
   <body>
@@ -318,6 +328,9 @@
             <button type="button" class="eye" data-eye="pw" aria-label="Show password">Show</button>
           </span>
           <span class="hint" id="caps"></span>
+        </label>
+        <label class="hide" id="gw">Staff passcode
+          <input type="password" id="gp" autocomplete="off">
         </label>
         <div id="lerr" class="err" role="alert"></div>
         <button class="btn red" id="lb"><span>Sign in</span></button>
@@ -364,6 +377,7 @@
         <button data-go="ann" class="on">Announcements</button>
         <button data-go="msgs" id="nav-msgs">Messages <span class="cnt hide" id="mcnt"></span></button>
         <button data-go="appts" id="nav-appts">Appointments <span class="cnt hide" id="acnt"></span></button>        <button data-go="accts" id="nav-accts">Accounts</button>
+        <button data-go="res" id="nav-res">Residents <span class="cnt hide" id="rcnt"></span></button>   
         <button data-go="offs" id="nav-offs">Officials</button>
         <button data-go="site" id="nav-site">Barangay Info</button>
         <button data-go="prof" id="nav-prof">My profile</button>
@@ -510,6 +524,20 @@
     <div class="meta" style="margin-top:8px">Red means full. Cancelled appointments free the slot.</div>
   </details>
 </section>
+        <section id="sec-res" class="hide">
+        <div class="ph"><h2>Residents</h2><p>People who registered on the website. Check the address and ID photo, then verify them as residents of Barangay Zapatera.</p></div>
+        <div class="seg" id="rsSeg">
+          <button type="button" data-f="pending" class="on">Pending <span class="n" id="rsc-pending">0</span></button>
+          <button type="button" data-f="verified">Verified <span class="n" id="rsc-verified">0</span></button>
+          <button type="button" data-f="rejected">Rejected <span class="n" id="rsc-rejected">0</span></button>
+          <button type="button" data-f="all">All <span class="n" id="rsc-all">0</span></button>
+        </div>
+        <div class="card two">
+          <input id="rsq" type="search" placeholder="Search name, contact, sitio, or address">
+          <select id="rsx"><option value="">All sitios</option></select>
+        </div>
+        <div id="rslist"></div>
+      </section>
 
       <section id="sec-act" class="hide">
         <div class="ph"><h2>Activity log</h2><p>Who changed what and when. Shows the latest 200 actions.</p></div>
@@ -647,7 +675,7 @@
     const data = await r.json().catch(() => ({}));
     if (r.status === 401 && !url.startsWith('/api/auth/login')) { view('login'); throw new Error('Please sign in.'); }
     if (r.status === 403 && data.mustChange) { forced = true; view('pw'); throw new Error(data.error); }
-    if (!r.ok) throw new Error(data.error || 'Something went wrong.');
+    if (!r.ok) { const e = new Error(data.error || 'Something went wrong.'); e.gate = !!data.gate; throw e; }
     return data;
   }
 
@@ -666,11 +694,12 @@
   }
 
   /* ---------- tabs ---------- */
-  const panels = { ann: 'sec-ann', msgs: 'msgs', appts: 'sec-appt', accts: 'accts', offs: 'offs', site: 'sec-site', prof: 'sec-prof', act: 'sec-act' };
+const panels = { ann: 'sec-ann', msgs: 'msgs', appts: 'sec-appt', res: 'sec-res', accts: 'accts', offs: 'offs', site: 'sec-site', prof: 'sec-prof', act: 'sec-act' };
   function tab(n) {
     Object.entries(panels).forEach(([k, id]) => $(id).classList.toggle('hide', k !== n));
     document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.go === n));
     if (user && n === 'appts') loadAppointments();
+    if (user && n === 'res') loadResidents();
     if (user && n === 'act') loadActivity();
   }
   document.querySelectorAll('nav button').forEach(b => b.onclick = () => tab(b.dataset.go));
@@ -1094,7 +1123,10 @@
             el('img', { src: '/api/admin/evidence/' + id, alt: 'Evidence photo', style: 'width:84px;height:84px;object-fit:cover;border-radius:6px;border:1px solid var(--line)' }))))) : null;
 
       ml.append(el('div', { className: 'card item ' + cls },
-        el('div', { className: 'row' }, el('b', { textContent: m.name }), el('span', { className: 'badge ' + cls, textContent: m.status })),
+        el('div', { className: 'row' }, el('b', { textContent: m.name }),
+        el('span', {},
+          ...(m.resident_status === 'verified' ? [el('span', { className: 'badge on', textContent: 'Verified resident', style: 'margin-right:6px' })] : []),
+        el('span', { className: 'badge ' + cls, textContent: m.status }))),
         el('div', { className: 'meta', textContent: (m.ref ? m.ref + ' | ' : '') + m.topic + ' | ' + m.contact + ' | ' + fmt(m.created_at) + (m.handled_by ? ' | handled by ' + m.handled_by : '') }),
         el('div', { className: 'msg', textContent: m.message }),
         ...(evBox ? [evBox] : []),
@@ -1424,7 +1456,6 @@
                 el('label', { style: 'display:flex;gap:8px;align-items:center;font-weight:500' }, cb, name), tin, tout));
               return r;
             });
-            window.dayRows = rows;
             wrapBox.append(hid);
             grid.append(wrapBox);
             return;
@@ -1632,6 +1663,137 @@
     } catch (e) {}
   }
 
+  /* ---------- residents ---------- */
+let rsFilter = 'pending', cachedRes = [];
+const SITIOS = ['Caimito', 'Mangga', 'Nangka', 'Creekside', 'Bayabas'];
+SITIOS.forEach(s => $('rsx').append(el('option', { value: s, textContent: 'Sitio ' + s })));
+$('rsx').addEventListener('change', () => drawResidents());
+
+async function loadResidents() {
+  try { cachedRes = await api('/api/admin/residents'); drawResidents(); } catch (e) {}
+}
+
+function drawResidents() {
+  const pend = cachedRes.filter(r => r.status === 'pending').length;
+  $('rcnt').textContent = pend; $('rcnt').classList.toggle('hide', !pend);
+  ['pending', 'verified', 'rejected', 'all'].forEach(f => {
+    $('rsc-' + f).textContent = cachedRes.filter(r => f === 'all' || r.status === f).length;
+  });
+
+  const q = $('rsq').value.trim().toLowerCase();
+  const rows = cachedRes.filter(r =>
+    (rsFilter === 'all' || r.status === rsFilter) &&
+    (!$('rsx').value || r.sitio === $('rsx').value) &&
+    (!q || (r.full_name + ' ' + r.contact + ' ' + (r.sitio || '') + ' ' + r.address).toLowerCase().includes(q)));
+
+  const box = $('rslist'); box.replaceChildren();
+  if (!rows.length) { box.append(el('div', { className: 'empty', textContent: 'No residents here.' })); return; }
+
+  rows.forEach(r => {
+    const cls = r.status === 'verified' ? 'resolved' : r.status === 'pending' ? 'new' : '';
+    const set = async s => {
+      try { await api('/api/admin/residents/' + r.id, 'PATCH', { status: s }); toast('Resident updated'); loadResidents(); }
+      catch (e) { alert(e.message); }
+    };
+
+    /* information panel */
+    const line = (k, v) => el('div', {}, el('dt', { textContent: k }), el('dd', { textContent: v || 'Not added' }));
+    const det = el('div', { className: 'rdet hide' }, el('dl', {},
+      line('Full name', r.full_name),
+      line('Mobile number or email', r.contact),
+      line('Sitio', r.sitio),
+      line('Address in Zapatera', r.address),
+      line('Status', r.status),
+      line('Registered on', r.created_at ? fmt(r.created_at) : ''),
+      line('Verified or rejected by', r.verified_by),
+      line('Date of decision', r.verified_at ? fmt(r.verified_at) : ''),
+      line('ID photo', r.has_id ? 'Uploaded' : 'Not uploaded')));
+    let idLoaded = false;
+    const info = el('button', { className: 'btn sm', textContent: 'Details' });
+    info.onclick = () => {
+      const hidden = det.classList.toggle('hide');
+      info.textContent = hidden ? 'Details' : 'Hide details';
+      if (!hidden && r.has_id && !idLoaded) {
+        idLoaded = true;
+        det.append(el('img', { className: 'idimg', src: '/api/admin/residents/' + r.id + '/id', alt: 'ID photo of ' + r.full_name }));
+      }
+    };
+
+    const acts = el('div', { className: 'acts' }, info);
+
+    /* admin only: change contact */
+    if (user.role === 'admin') {
+      const chc = el('button', { className: 'btn sm', textContent: 'Change contact' });
+      chc.onclick = async () => {
+        const v = prompt('New mobile number or email for ' + r.full_name + ':', r.contact);
+        if (v === null || !v.trim() || v.trim() === r.contact) return;
+        try {
+          await api('/api/admin/residents/' + r.id + '/contact', 'PATCH', { contact: v });
+          toast('Contact updated');
+          loadResidents();
+        } catch (e) { alert(e.message); }
+      };
+      acts.append(chc);
+    }
+
+    /* admin and kagawad: reset forgotten password */
+    const rp = el('button', { className: 'btn sm', textContent: 'Reset password' });
+    rp.onclick = async () => {
+      if (!confirm('Only reset this after you have checked the resident\'s ID at the Hall.\n\nSet a new temporary password for ' + r.full_name + '?')) return;
+      const p = tempPw();
+      try {
+        await api('/api/admin/residents/' + r.id + '/reset-password', 'POST', { password: p });
+        showNotice(
+          el('b', { textContent: 'Give this to ' + r.full_name + ' (shown only once)' }), el('br'),
+          document.createTextNode('Sign in with: '), el('code', { textContent: r.contact }), el('br'),
+          document.createTextNode('Temporary password: '), el('code', { textContent: p }), el('br'),
+          el('span', { className: 'meta', textContent: 'Tell them to change it right away under Edit my profile, then Password.' }), el('br'));
+      } catch (e) { alert(e.message); }
+    };
+    acts.append(rp);
+
+    if (r.status !== 'verified') {
+      const b = el('button', { className: 'btn sm red', textContent: 'Verify as resident' });
+      b.onclick = () => set('verified'); acts.append(b);
+    }
+    if (r.status !== 'rejected') {
+      const b = el('button', { className: 'btn sm d', textContent: 'Reject' });
+      b.onclick = () => { if (confirm('Reject the registration of ' + r.full_name + '?')) set('rejected'); };
+      acts.append(b);
+    }
+    if (r.status !== 'pending') {
+      const b = el('button', { className: 'btn sm', textContent: 'Back to pending' });
+      b.onclick = () => set('pending'); acts.append(b);
+    }
+    if (r.has_id) {
+      acts.append(el('a', { className: 'btn sm', href: '/api/admin/residents/' + r.id + '/id', target: '_blank', rel: 'noopener', textContent: 'View ID photo' }));
+    }
+
+    if (user.role === 'admin') {
+      const del = el('button', { className: 'btn sm d', textContent: 'Delete account' });
+      del.onclick = async () => {
+        if (!confirm('Permanently delete the account of ' + r.full_name + '?\n\nTheir ID photo and sign-in will be removed. Their past messages stay in the Messages tab. This cannot be undone.')) return;
+        try { await api('/api/admin/residents/' + r.id, 'DELETE'); toast('Resident account deleted'); loadResidents(); }
+        catch (e) { alert(e.message); }
+      };
+      acts.append(del);
+    }
+
+    box.append(el('div', { className: 'card item ' + cls },
+      el('div', { className: 'row' }, el('b', { textContent: r.full_name }), el('span', { className: 'badge ' + cls, textContent: r.status })),
+      el('div', { className: 'meta', textContent: r.contact + ' | ' + (r.sitio ? 'Sitio ' + r.sitio + ', ' : '') + r.address + ' | registered ' + fmt(r.created_at) + (r.verified_by ? ' | by ' + r.verified_by : '') }),
+      acts,
+      det));
+  });
+}
+
+document.querySelectorAll('#rsSeg button').forEach(b => b.onclick = () => {
+  rsFilter = b.dataset.f;
+  document.querySelectorAll('#rsSeg button').forEach(x => x.classList.toggle('on', x === b));
+  drawResidents();
+});
+$('rsq').addEventListener('input', drawResidents);
+
   /* ---------- activity log (admin only) ---------- */
   async function loadActivity() {
     try {
@@ -1650,12 +1812,12 @@
   }
 
   /* ---------- live new-message alerts (checks every 3 seconds) ---------- */
-  let lastMsgId = null, lastApptId = null, pollT = null;
-
+  let lastMsgId = null, lastApptId = null, lastResAt = null, lastResStamp = null, pollT = null;
   async function pollMessages() {
     if (!user || document.hidden) return;
     try {
       const r = await fetch('/api/admin/messages-poll');
+      if (r.status === 401) { stopPolling(); user = null; view('login'); toast('Your session ended. Please sign in again.', true); return; }
       if (!r.ok) return;
       const d = await r.json();
 
@@ -1675,10 +1837,26 @@
         beep();
         loadAppointments();
       }
+
+      if (typeof d.res_pending === 'number') {
+        $('rcnt').textContent = d.res_pending;
+        $('rcnt').classList.toggle('hide', !d.res_pending);
+      }
+      if (lastResStamp === null) { lastResStamp = d.res_stamp; lastResAt = d.res_at || ''; }
+      else if (d.res_stamp !== lastResStamp) {
+        lastResStamp = d.res_stamp;
+        loadResidents();
+        if (d.res_at && d.res_at > lastResAt) {
+          lastResAt = d.res_at;
+          const info = d.res_info ? ' (' + d.res_info + ')' : '';
+          toast((d.res_kind === 'new' ? 'New resident registered: ' : 'Resident updated their profile: ') + d.res_name + info);
+          beep();
+        }
+      }
     } catch (e) {}
   }
-  function startPolling() { clearInterval(pollT); pollT = setInterval(pollMessages, 3000); }
-  function stopPolling() { clearInterval(pollT); pollT = null; lastMsgId = null; lastApptId = null; }
+  function startPolling() { clearInterval(pollT); pollT = setInterval(pollMessages, 5000); pollMessages(); }
+  function stopPolling() { clearInterval(pollT); pollT = null; lastMsgId = null; lastApptId = null; lastResAt = null; lastResStamp = null; }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) pollMessages(); });
 
   async function enter(u) {
@@ -1691,6 +1869,7 @@
     $('nav-msgs').classList.toggle('hide', !canMsg);
     $('stw-msg').classList.toggle('hide', !canMsg);
     $('nav-appts').classList.toggle('hide', !canMsg);
+    $('nav-res').classList.toggle('hide', !canMsg);
     $('nav-act').classList.toggle('hide', u.role !== 'admin');
     $('nav-accts').classList.toggle('hide', u.role !== 'admin');
     $('nav-offs').classList.toggle('hide', u.role !== 'admin');
@@ -1699,7 +1878,7 @@
     $('stw-appt').classList.toggle('hide', !canMsg);
     tab('ann');
     await loadAnnouncements();
-    if (canMsg) { await loadMessages(); loadAppointments(); startPolling(); }
+    if (canMsg) { await loadMessages(); loadAppointments(); loadResidents(); startPolling(); }
     if (u.role === 'admin') { await loadUsers(); await loadOfficials(); await loadSite(); }
   }
 
@@ -1708,9 +1887,13 @@
     e.preventDefault(); $('lerr').classList.remove('on');
     busy($('lb'), true, 'Signing in');
     try {
-      const d = await api('/api/auth/login', 'POST', { username: $('un').value, password: $('pw').value });
-      $('pw').value = ''; $('p0').value = ''; await enter(d.user);
-    } catch (err) { showErr('lerr', $('login'), err.message); $('pw').select(); }
+      const d = await api('/api/auth/login', 'POST', { username: $('un').value, password: $('pw').value, passcode: $('gp').value });
+      $('pw').value = ''; $('p0').value = ''; $('gp').value = ''; await enter(d.user);
+    } catch (err) {
+      if (err.gate) { $('gw').classList.remove('hide'); $('gp').focus(); }
+      showErr('lerr', $('login'), err.message);
+      if (!err.gate) $('pw').select();
+    }
     busy($('lb'), false);
   };
 

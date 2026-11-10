@@ -472,6 +472,122 @@ header{transition:box-shadow .3s var(--ease)}
   *,*::before,*::after{animation:none!important;transition:none!important}
   .js .rv:not(.in){opacity:1}
 }
+
+/* ============ MENU DRAWER ============ */
+#menuBtn{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 16px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);color:var(--ink);font:600 .9rem var(--body);cursor:pointer}
+#menuBtn:hover{border-color:var(--link);color:var(--link)}
+#menuBtn svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+@media(max-width:860px){.bar{position:relative}#menuBtn{position:absolute;top:14px;right:0}}
+#scrim{position:fixed;inset:0;background:rgba(10,16,36,.6);opacity:0;pointer-events:none;transition:opacity .25s;z-index:70}
+#drawer{position:fixed;top:0;right:0;bottom:0;width:min(340px,88%);z-index:71;display:flex;flex-direction:column;background:var(--surface);color:var(--ink);box-shadow:-12px 0 40px rgba(0,0,0,.3);transform:translateX(100%);transition:transform .28s var(--ease)}
+body.menu #scrim{opacity:1;pointer-events:auto}
+body.menu #drawer{transform:none}
+.dh{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;background:var(--brand);color:#fff;border-bottom:3px solid var(--accent)}
+.dh b{font:700 1.1rem var(--head)}
+.dh button{background:none;border:0;color:#fff;font-size:1.7rem;line-height:1;cursor:pointer}
+.dacct{padding:18px 20px;background:var(--alt);border-bottom:1px solid var(--line);display:grid;gap:8px}
+.dacct p{margin:0;font-size:.9rem;color:var(--muted)}
+.dacct .btn{min-height:42px;padding:0 18px;font-size:.9rem}
+.rbadge{justify-self:start;font-size:.78rem;font-weight:700;padding:3px 12px;border-radius:99px;background:var(--tint);color:var(--link)}
+.rbadge.ok{background:rgba(28,138,76,.16);color:var(--green)}
+.rbadge.bad{background:rgba(184,35,42,.14);color:var(--accent)}
+.dbody{flex:1;overflow:auto;padding:8px 12px}
+.dbody h4{font:700 .75rem var(--body);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:16px 8px 6px}
+.dbody a,.dbody button{display:block;width:100%;text-align:left;padding:11px 10px;border:0;border-radius:var(--r);background:none;color:var(--ink);font:500 .96rem var(--body);text-decoration:none;cursor:pointer}
+.dbody a:hover,.dbody button:hover{background:var(--alt);color:var(--accent)}
+.dfoot{padding:14px 20px;border-top:1px solid var(--line)}
+.dfoot .tsw{color:var(--ink)}
+.dfoot .tsw .trk{background:var(--line);border-color:var(--line)}
+.dfoot .tsw[aria-checked="true"] .trk{background:var(--accent);border-color:var(--accent)}
+
+/* ============ RESIDENT SIGN IN / REGISTER ============ */
+#rd{border:0;border-radius:10px;padding:0;width:min(470px,calc(100% - 24px));max-height:94vh;overflow:auto;background:var(--surface);color:var(--ink);box-shadow:0 30px 80px rgba(0,0,0,.5)}
+#rd[open]{animation:ndIn .3s var(--ease)}
+#rd::backdrop{background:rgba(10,16,36,.72);backdrop-filter:blur(3px)}
+#rd form[hidden]{display:none}
+
+.rhead{position:relative;display:flex;align-items:center;gap:14px;padding:24px 28px;background:var(--brand);color:#fff;border-bottom:4px solid var(--accent);overflow:hidden}
+.rhead::after{content:"";position:absolute;right:-50px;top:-50px;width:190px;height:190px;border-radius:50%;background:var(--seal) center/cover;opacity:.12}
+.rhead>*{position:relative;z-index:1}
+.rhead .seal{width:54px;height:54px;box-shadow:0 0 0 3px rgba(255,255,255,.3)}
+.rhead h3{font-size:1.3rem;color:#fff;margin:0}
+.rhead p{margin:2px 0 0;font-size:.85rem;opacity:.85}
+.rx{position:absolute;top:12px;right:14px;z-index:3;width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,255,255,.45);background:rgba(255,255,255,.12);color:#fff;font-size:1.3rem;line-height:1;cursor:pointer;transition:background .2s}
+.rx:hover{background:var(--accent);border-color:var(--accent)}
+
+.rbody{padding:22px 28px 26px}
+.rtabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;background:var(--alt);border:1px solid var(--line);border-radius:8px;margin-bottom:22px}
+.rtabs button{padding:10px;border:0;border-radius:6px;background:transparent;color:var(--muted);font:600 .92rem var(--body);cursor:pointer;transition:background .2s,color .2s}
+.rtabs button:hover{color:var(--ink)}
+.rtabs button.on{background:var(--surface);color:var(--link);box-shadow:var(--shadow)}
+
+#rd form{gap:16px}
+#rd label{font-size:.85rem}
+#rd .rintro h4{font:700 1.2rem var(--head);margin:0 0 4px}
+#rd .rintro p{margin:0;color:var(--muted);font-size:.88rem;line-height:1.5;font-weight:400}
+
+/* inputs with an icon on the left */
+.ifld{position:relative;display:block}
+.ifld>svg{position:absolute;left:13px;top:50%;width:18px;height:18px;margin-top:-9px;fill:none;stroke:var(--muted);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;pointer-events:none;transition:stroke .2s}
+.ifld:focus-within>svg{stroke:var(--link)}
+#rd .ifld select{padding:13px 14px 13px 42px;font-weight:400;appearance:auto}
+#rd .ifld input{padding:13px 14px 13px 42px;font-weight:400}
+#rd .ifld input::placeholder{color:var(--muted);opacity:.7}
+.pwf input{padding-right:66px!important}
+.pwf .eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--muted);font:600 .78rem var(--body);padding:8px 10px;cursor:pointer;border-radius:4px}
+.pwf .eye:hover{color:var(--link);background:var(--alt)}
+
+.two2{display:grid;gap:12px;grid-template-columns:1fr 1fr}
+@media(max-width:520px){.two2{grid-template-columns:1fr}.rhead{padding:20px 56px 20px 20px}.rbody{padding:18px 20px 22px}}
+
+/* password strength */
+.pmeter{display:grid;gap:5px;margin-top:-6px}
+.pmeter .mbar{display:block;height:5px;border-radius:5px;background:var(--line);overflow:hidden}
+.pmeter .mbar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s,background .3s}
+#rd small{font-weight:400;color:var(--muted);font-size:.78rem;line-height:1.4}
+
+/* ID upload box */
+.drop{position:relative;display:flex;gap:14px;align-items:center;padding:14px 16px;border:1.5px dashed var(--line);border-radius:8px;background:var(--alt);cursor:pointer;transition:border-color .2s,background .2s}
+.drop:hover,.drop:focus-within{border-color:var(--link);background:var(--tint)}
+.drop>svg{flex:none;width:28px;height:28px;fill:none;stroke:var(--link);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.drop b{display:block;font-size:.9rem;overflow-wrap:anywhere}
+.drop input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;padding:0;border:0}
+.drop.has{border-style:solid;border-color:var(--green);background:rgba(28,138,76,.08)}
+.drop.has>svg{stroke:var(--green)}
+
+/* messages, buttons, footer */
+.rerr{font-size:.88rem;color:var(--accent)}
+.rerr:not(:empty){background:rgba(184,35,42,.1);border-left:4px solid var(--accent);padding:10px 12px;border-radius:4px}
+#rd .btn{width:100%;min-height:50px}
+#rd .btn:disabled{opacity:.75;cursor:progress}
+#rd .btn:disabled::before{content:"";width:16px;height:16px;margin-right:10px;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+.rfoot{margin:0;text-align:center;font-size:.86rem;color:var(--muted);font-weight:400}
+.rfoot button{background:none;border:0;padding:0;color:var(--link);font:600 .86rem var(--body);text-decoration:underline;cursor:pointer}
+
+/* resident profile dialog */
+#pd{border:0;border-radius:10px;padding:0;width:min(470px,calc(100% - 24px));max-height:94vh;overflow:auto;background:var(--surface);color:var(--ink);box-shadow:0 30px 80px rgba(0,0,0,.5)}
+#pd[open]{animation:ndIn .3s var(--ease)}
+#pd::backdrop{background:rgba(10,16,36,.72);backdrop-filter:blur(3px)}
+#pd form{gap:16px}
+#pd form[hidden]{display:none}
+#pd label{font-size:.85rem}
+#pd .ifld input,#pd .ifld select{padding:13px 14px 13px 42px;font-weight:400}
+#pd .ifld select{appearance:auto}
+#pd .pwf input{padding-right:66px}
+#pd .btn{width:100%;min-height:50px}
+#pd .btn:disabled{opacity:.75;cursor:progress}
+#pd .btn:disabled::before{content:"";width:16px;height:16px;margin-right:10px;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+#pd small{font-weight:400;color:var(--muted);font-size:.78rem;line-height:1.4}
+.rok{font-size:.88rem;color:var(--green)}
+.rok:not(:empty){background:rgba(28,138,76,.12);border-left:4px solid var(--green);padding:10px 12px;border-radius:4px}
+#pd input[readonly]{background:var(--alt);color:var(--muted);cursor:not-allowed}
+.rwarn{background:var(--tint);border-radius:6px;padding:12px 14px;font-size:.82rem;line-height:1.5;margin:0}
+
+/* locked form notice */
+.gate{display:grid;gap:10px;justify-items:start;padding:22px;border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:var(--r);background:var(--alt)}
+.gate b{font:700 1.1rem var(--head)}
+.gate p{margin:0;color:var(--muted);font-size:.93rem}
+
 </style>
 </head>
 <body>
@@ -504,6 +620,7 @@ header{transition:box-shadow .3s var(--ease)}
 <header><div class="wrap bar">
   <a class="brand" href="#top" aria-label="Barangay Zapatera home"><span class="seal" role="img" aria-label="Barangay Zapatera official seal"></span><span><b>Barangay Zapatera</b><small>Cebu City</small></span></a>
   <nav aria-label="Main"><a href="#about">About</a><a href="#services">Services</a><a href="#news">News</a><a href="#events">Events</a><a href="#gallery">Gallery</a><a href="#officials">Officials</a><a href="#contact">Contact</a><a class="cta" href="#process">Request a document</a></nav>
+  <button type="button" id="menuBtn" aria-expanded="false" aria-controls="drawer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>Menu</button>
 </div></header>
 
 <main id="top">
@@ -640,7 +757,7 @@ header{transition:box-shadow .3s var(--ease)}
     <form id="apf">
       <label style="position:absolute;left:-9999px" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
       <label>Full name<input name="n" required maxlength="100" autocomplete="name"></label>
-      <label>Phone or email<input name="c" required minlength="5" maxlength="120"><small style="font-weight:400;color:var(--muted)">Use an email address to get a confirmation.</small></label>
+      <label>Phone or email<input name="c" required minlength="5" maxlength="120"><small style="font-weight:400;color:var(--muted)">Emails go to the email you registered with.</small></label>
       <label>Purpose of visit<input name="p" required minlength="3" maxlength="200" placeholder="e.g. Barangay Clearance for a job application"></label>
       <label><span id="apdl">Date (Monday to Friday)</span><input type="date" name="d" id="apd" required></label>
       <label>Time<select name="s" id="aps" required><option value="">Choose a date first</option></select></label>
@@ -654,7 +771,7 @@ header{transition:box-shadow .3s var(--ease)}
     <form id="f">
       <label style="position:absolute;left:-9999px" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
       <label>Full name<input name="n" required autocomplete="name" maxlength="100"></label>
-      <label>Phone or email<input name="c" required minlength="5" maxlength="120"><small style="font-weight:400;color:var(--muted)">Use an email address if you want status updates sent to your inbox.</small></label>
+      <label>Phone or email<input name="c" required minlength="5" maxlength="120"><small style="font-weight:400;color:var(--muted)">Status emails go to the email you registered with.</small></label>
       <label>Topic<select name="t"><option>Request a document</option><option>Report a concern</option><option>Suggestion</option><option>Other</option></select></label>
       <label>Message<textarea name="m" rows="4" required minlength="5" maxlength="2000"></textarea></label>
       <div id="evwrap" hidden>
@@ -705,6 +822,7 @@ header{transition:box-shadow .3s var(--ease)}
   <div class="copy">Official website of Barangay Zapatera. Text in [brackets] is placeholder and must be replaced with verified details.</div>
 </div></footer>
 
+<script>var HOURS={days:[1,2,3,4,5],open:8,close:17};</script>
 <script>
 /* landing page text saved by the Admin and Secretary (edit in the staff portal, Barangay Info tab) */
 (async function(){
@@ -891,6 +1009,302 @@ header{transition:box-shadow .3s var(--ease)}
   </form>
 </dialog>
 
+<div id="scrim"></div>
+<aside id="drawer" aria-label="Menu" inert>
+  <div class="dh"><b>Menu</b><button type="button" id="dx" aria-label="Close menu">&times;</button></div>
+  <div class="dacct" id="dacct"></div>
+  <div class="dbody">
+    <h4>Services</h4>
+    <a href="#process">Request a document</a>
+    <a href="#appointment">Book a visit</a>
+    <a href="#message">Send a message</a>
+    <a href="#track">Check your request</a>
+    <h4>Community</h4>
+    <a href="#news">News and announcements</a>
+    <a href="#events">Events calendar</a>
+    <a href="#gallery">Photo gallery</a>
+    <a href="#officials">Barangay officials</a>
+    <h4>Help</h4>
+    <a href="#emergency">Emergency hotlines</a>
+    <a href="#contact">Visit us and map</a>
+    <button type="button" id="dchat">Ask the assistant</button>
+  </div>
+  <div class="dfoot"><button type="button" class="tsw" role="switch" aria-checked="false" aria-label="Dark mode"><span class="trk"></span><span>Dark mode</span></button></div>
+</aside>
+
+<dialog id="rd" aria-labelledby="rdt">
+  <button type="button" class="rx" id="rdx" aria-label="Close">&times;</button>
+
+  <div class="rhead">
+    <span class="seal" role="img" aria-label="Barangay Zapatera seal"></span>
+    <div>
+      <h3 id="rdt">Resident Portal</h3>
+      <p>Barangay Zapatera, Cebu City</p>
+    </div>
+  </div>
+
+  <div class="rbody">
+    <div class="rtabs" role="tablist">
+      <button type="button" class="on" data-t="in" role="tab">Sign in</button>
+      <button type="button" data-t="up" role="tab">Register</button>
+    </div>
+
+    <!-- SIGN IN -->
+    <form id="rin">
+      <div class="rintro">
+        <h4>Welcome back</h4>
+        <p>Sign in to send messages and book visits faster. Your details are filled in for you.</p>
+      </div>
+
+      <label>Email
+        <span class="ifld">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>
+          <input type="text" inputmode="email" autocapitalize="none" spellcheck="false" name="c" required autocomplete="username" placeholder="name@email.com">
+        </span>
+      </label>
+
+      <label>Password
+        <span class="ifld pwf">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+          <input type="password" name="p" required autocomplete="current-password" placeholder="Enter your password">
+          <button type="button" class="eye" aria-label="Show password">Show</button>
+        </span>
+      </label>
+
+      <div class="rerr" role="alert"></div>
+      <div class="rok" role="status"></div>
+      <button class="btn red" type="submit">Sign in</button>
+
+      <p class="rfoot"><button type="button" data-t="fg">Forgot your password?</button></p>
+      <p class="rfoot">New to the portal? <button type="button" data-t="up">Create an account</button></p>
+    </form>
+
+    <!-- REGISTER -->
+    <form id="rup" hidden>
+      <div class="rintro">
+        <h4>Create your account</h4>
+        <p>For residents of Barangay Zapatera. Use an email you can open, because password resets are sent there. The Hall will verify your address.</p>
+      </div>
+
+      <label style="position:absolute;left:-9999px" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
+
+      <label>Full name
+        <span class="ifld">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+          <input name="n" required maxlength="100" autocomplete="name" placeholder="Juan Dela Cruz">
+        </span>
+      </label>
+
+      <label>Email
+        <span class="ifld">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>
+          <input type="email" name="c" required maxlength="120" autocomplete="email" autocapitalize="none" placeholder="name@email.com">
+        </span>
+      </label>
+
+      <label>Sitio
+        <span class="ifld">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+          <select name="s" required>
+            <option value="">Choose your sitio</option>
+            <option>Caimito</option>
+            <option>Mangga</option>
+            <option>Nangka</option>
+            <option>Creekside</option>
+            <option>Bayabas</option>
+          </select>
+        </span>
+      </label>
+
+      <label>House number and street
+        <span class="ifld">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v9H4z"/><path d="M10 20v-6h4v6"/></svg>
+          <input name="a" required maxlength="200" placeholder="e.g. House 12, Main Street">
+        </span>
+      </label>
+
+      <div class="two2">
+        <label>Password
+          <span class="ifld pwf">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+            <input type="password" name="p" id="rpw" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters">
+            <button type="button" class="eye" aria-label="Show password">Show</button>
+          </span>
+        </label>
+        <label>Repeat password
+          <span class="ifld pwf">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+            <input type="password" name="p2" required minlength="8" autocomplete="new-password" placeholder="Type it again">
+            <button type="button" class="eye" aria-label="Show password">Show</button>
+          </span>
+        </label>
+      </div>
+      <div class="pmeter"><span class="mbar"><i id="rmt"></i></span><small id="rmh">Use letters and numbers for a stronger password.</small></div>
+
+      <label>Valid ID photo <small>(optional)</small>
+        <span class="drop" id="rdrop">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5m0 0l-4 4m4-4l4 4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+          <span><b id="rdn">Upload a photo of your ID</b><small>A valid ID with your Zapatera address helps the Hall verify you faster. Only staff can see it.</small></span>
+          <input type="file" name="id" accept="image/*">
+        </span>
+      </label>
+
+      <div class="rerr" role="alert"></div>
+      <button class="btn red" type="submit">Create account</button>
+
+      <p class="rfoot">Already registered? <button type="button" data-t="in">Sign in</button></p>
+    </form>
+
+    <!-- FORGOT PASSWORD -->
+    <form id="rfg" hidden>
+      <div class="rintro">
+        <h4>Forgot your password?</h4>
+        <p>Enter the email you registered with. We will send you a link to choose a new password.</p>
+      </div>
+
+      <label>Email
+        <span class="ifld">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>
+          <input type="email" name="c" required maxlength="120" autocomplete="email" autocapitalize="none" placeholder="name@email.com">
+        </span>
+      </label>
+
+      <div class="rerr" role="alert"></div>
+      <div class="rok" role="status"></div>
+      <button class="btn red" type="submit">Send reset link</button>
+
+      <p class="rwarn">Registered with a mobile number before? The email reset will not work for you. Please visit the Barangay Hall with a valid ID and staff will reset your password.</p>
+      <p class="rfoot"><button type="button" data-t="in">Back to sign in</button></p>
+    </form>
+
+    <!-- CHOOSE NEW PASSWORD (opened from the email link) -->
+    <form id="rrs" hidden>
+      <div class="rintro">
+        <h4>Choose a new password</h4>
+        <p>Enter a new password for your resident account.</p>
+      </div>
+
+      <label>New password
+        <span class="ifld pwf">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+          <input type="password" name="p" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters">
+          <button type="button" class="eye" aria-label="Show password">Show</button>
+        </span>
+      </label>
+      <label>Repeat new password
+        <span class="ifld pwf">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+          <input type="password" name="p2" required minlength="8" autocomplete="new-password" placeholder="Type it again">
+          <button type="button" class="eye" aria-label="Show password">Show</button>
+        </span>
+      </label>
+
+      <div class="rerr" role="alert"></div>
+      <button class="btn red" type="submit">Save new password</button>
+
+      <p class="rfoot"><button type="button" data-t="fg">Link expired? Request a new one</button></p>
+    </form>
+  </div>
+</dialog>
+
+<dialog id="pd" aria-labelledby="pdt">
+  <button type="button" class="rx" id="pdx" aria-label="Close">&times;</button>
+  <div class="rhead">
+    <span class="seal" role="img" aria-label="Barangay Zapatera seal"></span>
+    <div>
+      <h3 id="pdt">My profile</h3>
+      <p>Barangay Zapatera, Cebu City</p>
+    </div>
+  </div>
+
+  <div class="rbody">
+    <div class="rtabs">
+      <button type="button" class="on" data-p="p">Profile</button>
+      <button type="button" data-p="w">Password</button>
+    </div>
+
+    <!-- PROFILE -->
+    <form id="pf">
+      <label>Full name
+        <span class="ifld">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+          <input name="n" required maxlength="100" autocomplete="name">
+        </span>
+      </label>
+
+      <label>Mobile number or email
+        <span class="ifld">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>
+          <input name="c" maxlength="120" autocomplete="username" readonly>
+        </span>
+        <small>This is what you use to sign in. To change it, ask the Barangay Hall.</small>
+      </label>
+
+      <label>Sitio
+        <span class="ifld">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+          <select name="s" required>
+            <option value="">Choose your sitio</option>
+            <option>Caimito</option>
+            <option>Mangga</option>
+            <option>Nangka</option>
+            <option>Creekside</option>
+            <option>Bayabas</option>
+          </select>
+        </span>
+      </label>
+
+      <label>House number and street
+        <span class="ifld">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v9H4z"/><path d="M10 20v-6h4v6"/></svg>
+          <input name="a" required maxlength="200">
+        </span>
+      </label>
+
+      <label>New ID photo <small>(optional)</small>
+        <span class="drop" id="pdrop">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5m0 0l-4 4m4-4l4 4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+          <span><b id="pdn">Upload a new ID photo</b><small>Only staff can see it.</small></span>
+          <input type="file" name="idp" accept="image/*">
+        </span>
+      </label>
+
+      <p class="rwarn">If you change your name, sitio, address or ID photo, the Barangay Hall will verify your account again.</p>
+      <div class="rerr" role="alert"></div>
+      <div class="rok" role="status"></div>
+      <button class="btn red" type="submit">Save changes</button>
+    </form>
+
+    <!-- PASSWORD -->
+    <form id="pwf2" hidden>
+      <label>Current password
+        <span class="ifld pwf">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+          <input type="password" name="cur" required autocomplete="current-password">
+          <button type="button" class="eye" aria-label="Show password">Show</button>
+        </span>
+      </label>
+      <label>New password
+        <span class="ifld pwf">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+          <input type="password" name="nw" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters">
+          <button type="button" class="eye" aria-label="Show password">Show</button>
+        </span>
+      </label>
+      <label>Repeat new password
+        <span class="ifld pwf">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+          <input type="password" name="nw2" required minlength="8" autocomplete="new-password">
+          <button type="button" class="eye" aria-label="Show password">Show</button>
+        </span>
+      </label>
+      <div class="rerr" role="alert"></div>
+      <div class="rok" role="status"></div>
+      <button class="btn red" type="submit">Change password</button>
+    </form>
+  </div>
+</dialog>
+
 <button type="button" id="cwb" aria-label="Ask the virtual assistant" aria-expanded="false">
   <svg class="i" viewBox="0 0 24 24" style="width:22px;height:22px"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.5A8 8 0 1 1 21 12z"/></svg><span>Ask us</span>
 </button>
@@ -905,8 +1319,6 @@ header{transition:box-shadow .3s var(--ease)}
 <a id="up" href="#top" aria-label="Back to top"><svg class="i" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></a>
 
 <script>
-/* ===== EDIT THIS: Barangay Hall schedule (24-hour clock, Sunday=0 ... Saturday=6) ===== */
-var HOURS={days:[1,2,3,4,5],open:8,close:17};
 
 (function(){
   var TZ='Asia/Manila';
@@ -1524,7 +1936,17 @@ var HOURS={days:[1,2,3,4,5],open:8,close:17};
     ['.fg > div:nth-child(3) h4','Help','Tabang','Tulong'],
     ['.fg > div:nth-child(4) h4','Reach us','Kontaka mi','Abutin kami'],
     ['#cwb span','Ask us','Pangutana','Magtanong'],
-    ['.cwh b','Barangay Assistant','Katabang sa Barangay','Katulong ng Barangay']
+    ['.cwh b','Barangay Assistant','Katabang sa Barangay','Katulong ng Barangay'],
+    ['^#apf input[name="n"]','Full name','Tibuok nga ngalan','Buong pangalan'],
+    ['^#apf input[name="c"]','Phone or email','Telepono o email','Telepono o email'],
+    ['^#apf input[name="p"]','Purpose of visit','Katuyoan sa pagbisita','Layunin ng pagbisita'],
+    ['^#apf select[name="s"]','Time','Oras','Oras'],
+    ['^#tr','Reference number','Reference number','Reference number'],
+    ['#rd .rtabs button[data-t="in"]','Sign in','Mosulod','Mag-sign in'],
+    ['#rd .rtabs button[data-t="up"]','Register','Magparehistro','Magrehistro'],
+    ['#rdt','Resident Portal','Portal sa Residente','Portal ng Residente'],
+    ['#rin button.red','Sign in','Mosulod','Mag-sign in'],
+    ['#rup button.red','Create account','Himoa ang account','Gumawa ng account']
   ];
   var IDX={en:1,bis:2,tl:3},HTMLLANG={en:'en',bis:'ceb',tl:'fil'};
   function node(sel){
@@ -1746,6 +2168,282 @@ var HOURS={days:[1,2,3,4,5],open:8,close:17};
     }catch(err){e.textContent=err.message;p.select()}
     b.disabled=false;
   });
+})();
+</script>
+<script>
+/* menu drawer + resident accounts */
+(function(){
+  var $=function(i){return document.getElementById(i)};
+  var me=null,rd=$('rd'),drawer=$('drawer');
+  function mk(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
+
+  /* drawer */
+  function menu(o){document.body.classList.toggle('menu',o);drawer.inert=!o;$('menuBtn').setAttribute('aria-expanded',o)}
+  $('menuBtn').onclick=function(){menu(true)};
+  $('dx').onclick=$('scrim').onclick=function(){menu(false)};
+  drawer.addEventListener('click',function(e){if(e.target.closest('a[href^="#"]'))menu(false)});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')menu(false)});
+  $('dchat').onclick=function(){menu(false);$('cwb').click()};
+
+  /* helpers */
+  function post(u,b){
+    return fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})}).then(function(r){
+      return r.json().catch(function(){return {}}).then(function(d){if(!r.ok)throw new Error(d.error||'Something went wrong. Please try again.');return d});
+    });
+  }
+  function shrink(file){
+    return new Promise(function(ok,no){
+      var img=new Image(),url=URL.createObjectURL(file);
+      img.onload=function(){
+        var s=Math.min(1,1280/Math.max(img.width,img.height)),c=document.createElement('canvas');
+        c.width=Math.round(img.width*s);c.height=Math.round(img.height*s);
+        c.getContext('2d').drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);ok(c.toDataURL('image/jpeg',0.8));
+      };
+      img.onerror=function(){no(new Error('That file is not a readable image.'))};
+      img.src=url;
+    });
+  }
+
+    /* lock the message and booking forms until the resident is signed in */
+  var GATED=['f','apf'], gates={};
+  var NEED_VERIFIED=false;
+  GATED.forEach(function(id){
+    var f=$(id); if(!f)return;
+    var g=mk('div','gate');
+    g.append(mk('b','',''),mk('p',''));
+    var btn=mk('button','btn red','Sign in or register');btn.type='button';
+    btn.onclick=function(){openRd('in')};
+    g.append(btn);
+    f.parentNode.insertBefore(g,f);
+    gates[id]={g:g,f:f,btn:btn};
+  });
+  function applyGate(){
+    GATED.forEach(function(id){
+      var x=gates[id]; if(!x)return;
+      var ok=!!me&&(!NEED_VERIFIED||me.status==='verified');
+      x.f.style.display=ok?'':'none';
+      x.g.style.display=ok?'none':'';
+      if(ok)return;
+      var what=id==='f'?'send a message':'book a visit';
+      var t=x.g.querySelector('b'),p=x.g.querySelector('p');
+      if(!me){
+        t.textContent='Sign in to continue';
+        p.textContent='Only registered residents of Zapatera can '+what+'. Sign in or create a free account.';
+        x.btn.style.display='';
+      }else{
+        t.textContent=me.status==='rejected'?'Account not verified':'Waiting for verification';
+        p.textContent=me.status==='rejected'
+          ?'Please visit the Barangay Hall so staff can verify your address.'
+          :'The Barangay Hall is still checking your registration. You can '+what+' once it is verified.';
+        x.btn.style.display='none';
+      }
+    });
+  }
+
+  /* account box in the menu */
+  var LABEL={verified:['Verified resident','ok'],pending:['Verification pending',''],rejected:['Not verified. Please visit the Hall.','bad']};
+  function paint(){
+    var a=$('dacct');a.replaceChildren();
+    if(!me){
+      a.append(mk('b','','Resident of Zapatera?'),mk('p','','Create an account so the Barangay Hall can verify you.'));
+      var b=mk('button','btn red','Sign in or register');b.type='button';b.onclick=function(){openRd('in')};a.append(b);
+    }else{
+      var l=LABEL[me.status]||LABEL.pending;
+      a.append(mk('b','',me.full_name),mk('span','rbadge '+l[1],l[0]),mk('p','',(me.sitio?'Sitio '+me.sitio+', ':'')+me.address));
+      var pbtn=mk('button','btn red','Edit my profile');pbtn.type='button';pbtn.onclick=openPd;a.append(pbtn);
+      var o=mk('button','btn','Sign out');o.type='button';
+      o.onclick=function(){post('/api/resident/logout').then(function(){me=null;paint()})};
+      a.append(o);
+    }
+      applyGate();
+  }
+  function fillForms(){
+    if(!me)return;
+    ['f','apf'].forEach(function(id){
+      var f=$(id);if(!f)return;
+      if(!f.n.value)f.n.value=me.full_name;
+      if(!f.c.value)f.c.value=me.contact;
+    });
+  }
+  function setMe(r){me=r;paint();fillForms()}
+
+  /* dialog tabs */
+  var fin=$('rin'),fup=$('rup'),ffg=$('rfg'),frs=$('rrs');
+  function openRd(t){tab(t);if(!rd.open)rd.showModal()}
+  function tab(t){
+    fin.hidden=t!=='in';fup.hidden=t!=='up';ffg.hidden=t!=='fg';frs.hidden=t!=='rs';
+    rd.querySelectorAll('.rtabs button').forEach(function(b){b.classList.toggle('on',b.dataset.t===t)});
+    document.querySelectorAll('#rd .rerr,#rd .rok').forEach(function(e){e.textContent=''});
+  }
+  rd.querySelectorAll('.rtabs button').forEach(function(b){b.onclick=function(){tab(b.dataset.t)}});
+  $('rdx').onclick=function(){rd.close()};
+  rd.addEventListener('click',function(e){if(e.target===rd)rd.close()});
+
+  fin.addEventListener('submit',function(e){
+    e.preventDefault();var btn=fin.querySelector('button.red'),err=fin.querySelector('.rerr');btn.disabled=true;err.textContent='';
+    post('/api/resident/login',{contact:fin.c.value,password:fin.p.value}).then(function(d){
+      fin.reset();setMe(d.resident);rd.close();menu(true);
+    }).catch(function(x){err.textContent=x.message}).then(function(){btn.disabled=false});
+  });
+
+  fup.addEventListener('submit',async function(e){
+    e.preventDefault();var btn=fup.querySelector('button.red'),err=fup.querySelector('.rerr');err.textContent='';
+    if(fup.p.value!==fup.p2.value){err.textContent='The passwords do not match.';return}
+    btn.disabled=true;
+    try{
+      var f=fup.id.files[0],body={full_name:fup.n.value,contact:fup.c.value,address:fup.a.value,sitio:fup.s.value,password:fup.p.value,website:fup.website.value};
+      if(f)body.id_photo=await shrink(f);
+      var d=await post('/api/resident/register',body);
+      fup.reset();setMe(d.resident);rd.close();menu(true);
+    }catch(x){err.textContent=x.message}
+    btn.disabled=false;
+  });
+
+    /* ---- form polish: show/hide password, strength meter, ID file name, switch links ---- */
+  rd.querySelectorAll('.pwf .eye').forEach(function(b){
+    b.onclick=function(){
+      var i=b.parentElement.querySelector('input'),show=i.type==='password';
+      i.type=show?'text':'password';
+      b.textContent=show?'Hide':'Show';
+      b.setAttribute('aria-label',show?'Hide password':'Show password');
+    };
+  });
+
+  var rpw=$('rpw');
+  rpw.addEventListener('input',function(){
+    var v=rpw.value,s=0;
+    if(v.length>=8)s++;
+    if(v.length>=12)s++;
+    if(/[a-z]/.test(v)&&/[A-Z]/.test(v))s++;
+    if(/\d/.test(v)&&/[A-Za-z]/.test(v))s++;
+    var label=['Too short','Weak','Fair','Good','Strong'][v?s:0];
+    var color=['#b8232a','#b8232a','#e08a00','#2e9b5a','#1d6b35'][v?s:0];
+    $('rmt').style.width=(v?Math.max(s,1)*25:0)+'%';
+    $('rmt').style.background=color;
+    $('rmh').textContent=v?'Password strength: '+label:'Use letters and numbers for a stronger password.';
+  });
+
+  var idIn=fup.querySelector('input[type=file]'),drop=$('rdrop');
+  idIn.addEventListener('change',function(){
+    var f=idIn.files[0];
+    drop.classList.toggle('has',!!f);
+    $('rdn').textContent=f?f.name:'Upload a photo of your ID';
+  });
+  fup.addEventListener('reset',function(){
+    setTimeout(function(){drop.classList.remove('has');$('rdn').textContent='Upload a photo of your ID';$('rmt').style.width='0'},0);
+  });
+
+  rd.querySelectorAll('.rfoot button').forEach(function(b){
+    b.onclick=function(){tab(b.dataset.t)};
+  });
+
+  /* forgot password: send the reset link */
+  ffg.addEventListener('submit',function(e){
+    e.preventDefault();
+    var btn=ffg.querySelector('button.red'),err=ffg.querySelector('.rerr'),ok=ffg.querySelector('.rok');
+    btn.disabled=true;err.textContent='';ok.textContent='';
+    post('/api/resident/forgot',{contact:ffg.c.value}).then(function(){
+      ok.textContent='If that email is registered, a reset link was sent. Check your inbox and spam folder. The link works for 30 minutes.';
+    }).catch(function(x){err.textContent=x.message}).then(function(){btn.disabled=false});
+  });
+
+  /* choose a new password (opened from the email link) */
+  var resetToken='';
+  frs.addEventListener('submit',function(e){
+    e.preventDefault();
+    var btn=frs.querySelector('button.red'),err=frs.querySelector('.rerr');err.textContent='';
+    if(frs.p.value!==frs.p2.value){err.textContent='The passwords do not match.';return}
+    btn.disabled=true;
+    post('/api/resident/reset',{token:resetToken,password:frs.p.value}).then(function(){
+      frs.reset();resetToken='';tab('in');
+      fin.querySelector('.rok').textContent='Your password was changed. You can sign in now.';
+    }).catch(function(x){err.textContent=x.message}).then(function(){btn.disabled=false});
+  });
+
+  /* open the new-password form when the visitor comes from the email link */
+  (function(){
+    var t=new URLSearchParams(location.search).get('reset');
+    if(!t)return;
+    resetToken=t;
+    history.replaceState(null,'',location.pathname+location.hash);
+    openRd('rs');
+  })();
+
+    /* ---- resident profile (edit information and password) ---- */
+  var pd=$('pd'),pf=$('pf'),pw2=$('pwf2');
+
+  function patchJson(u,b){
+    return fetch(u,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(function(r){
+      return r.json().catch(function(){return {}}).then(function(d){if(!r.ok)throw new Error(d.error||'Something went wrong. Please try again.');return d});
+    });
+  }
+  function clearMsgs(){pd.querySelectorAll('.rerr,.rok').forEach(function(e){e.textContent=''})}
+  function resetDrop(){pf.idp.value='';$('pdrop').classList.remove('has');$('pdn').textContent='Upload a new ID photo'}
+  function pdTab(t){
+    pf.hidden=t!=='p';pw2.hidden=t!=='w';
+    pd.querySelectorAll('.rtabs button').forEach(function(b){b.classList.toggle('on',b.dataset.p===t)});
+    clearMsgs();
+  }
+  function openPd(){
+    if(!me)return;
+    menu(false);
+    pf.n.value=me.full_name;pf.c.value=me.contact;pf.s.value=me.sitio||'';pf.a.value=me.address;
+    resetDrop();pw2.reset();pdTab('p');
+    if(!pd.open)pd.showModal();
+  }
+  pd.querySelectorAll('.rtabs button').forEach(function(b){b.onclick=function(){pdTab(b.dataset.p)}});
+  $('pdx').onclick=function(){pd.close()};
+  pd.addEventListener('click',function(e){if(e.target===pd)pd.close()});
+
+  pd.querySelectorAll('.pwf .eye').forEach(function(b){
+    b.onclick=function(){
+      var i=b.parentElement.querySelector('input'),show=i.type==='password';
+      i.type=show?'text':'password';
+      b.textContent=show?'Hide':'Show';
+      b.setAttribute('aria-label',show?'Hide password':'Show password');
+    };
+  });
+
+  pf.idp.addEventListener('change',function(){
+    var f=pf.idp.files[0];
+    $('pdrop').classList.toggle('has',!!f);
+    $('pdn').textContent=f?f.name:'Upload a new ID photo';
+  });
+
+  pf.addEventListener('submit',async function(e){
+    e.preventDefault();
+    var btn=pf.querySelector('button.red');clearMsgs();btn.disabled=true;
+    try{
+      var body={full_name:pf.n.value,contact:pf.c.value,address:pf.a.value,sitio:pf.s.value};
+      var f=pf.idp.files[0];
+      if(f)body.id_photo=await shrink(f);
+      var d=await patchJson('/api/resident/profile',body);
+      setMe(d.resident);
+      resetDrop();
+      pf.querySelector('.rok').textContent=d.reset
+        ?'Saved. The Barangay Hall will verify your updated details again.'
+        :'Your profile was saved.';
+    }catch(x){pf.querySelector('.rerr').textContent=x.message}
+    btn.disabled=false;
+  });
+
+  pw2.addEventListener('submit',async function(e){
+    e.preventDefault();
+    var btn=pw2.querySelector('button.red'),err=pw2.querySelector('.rerr');clearMsgs();
+    if(pw2.nw.value!==pw2.nw2.value){err.textContent='The new passwords do not match.';return}
+    btn.disabled=true;
+    try{
+      await post('/api/resident/change-password',{current:pw2.cur.value,next:pw2.nw.value});
+      pw2.reset();
+      pw2.querySelector('.rok').textContent='Your password was changed.';
+    }catch(x){err.textContent=x.message}
+    btn.disabled=false;
+  });
+
+  fetch('/api/resident/config',{cache:'no-store'}).then(function(r){return r.json()}).then(function(d){NEED_VERIFIED=!!d.requireVerified;applyGate()}).catch(function(){});
+  /* restore session on page load */
+  paint();
+  fetch('/api/resident/me',{cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(d){if(d&&d.resident)setMe(d.resident)}).catch(function(){});
 })();
 </script>
 </body>

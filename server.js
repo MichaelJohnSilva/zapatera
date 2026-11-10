@@ -1,5 +1,6 @@
 const path = require('path');
 const crypto = require('crypto');
+const { promisify } = require('util');
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { createClient } = require('@libsql/client/web');
@@ -10,7 +11,8 @@ const {
 } = process.env;
 
 if (!TURSO_DATABASE_URL) {
-  console.error('TURSO_DATABASE_URL is not set. Add it (and TURSO_AUTH_TOKEN) in the Cloudflare Variables and Secrets settings, or in .env / .dev.vars for local runs.');  process.exit(1);
+  console.error('TURSO_DATABASE_URL is not set. Add it (and TURSO_AUTH_TOKEN) in the Cloudflare Variables and Secrets settings, or in .env / .dev.vars for local runs.');
+  process.exit(1);
 }
 
 // ---------- Database (Turso) ----------
@@ -20,10 +22,11 @@ const client = new Proxy({}, {
     if (!_client) {
       const url = String(TURSO_DATABASE_URL).trim()
         .replace(/^["']+|["']+$/g, '')
-        .replace(/^((libsql|https?|wss?):\/*)+/i, 'https://')
+        .replace(/^((libsql|https?|wss?):\/*)+/i, 'https://');
       const authToken = String(TURSO_AUTH_TOKEN || '').trim().replace(/^["']+|["']+$/g, '');
       _client = createClient({ url, authToken });
-    } const v = _client[prop];
+    }
+    const v = _client[prop];
     return typeof v === 'function' ? v.bind(_client) : v;
   },
 });
@@ -72,6 +75,9 @@ const SCHEMA = `
     status TEXT NOT NULL DEFAULT 'new',
     handled_by TEXT,
     ref TEXT UNIQUE,
+    resident_id INTEGER,
+    assigned_id INTEGER,
+    assigned_name TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT
   );
@@ -132,7 +138,7 @@ const SCHEMA = `
     updated_at TEXT,
     updated_by TEXT
   );
-    CREATE TABLE IF NOT EXISTS activity_log (
+  CREATE TABLE IF NOT EXISTS activity_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
     user_name TEXT NOT NULL,
@@ -149,10 +155,35 @@ const SCHEMA = `
     date TEXT NOT NULL,
     slot TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'booked',
+    resident_id INTEGER,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS idx_appt_date ON appointments(date, slot);
 
+  CREATE TABLE IF NOT EXISTS residents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    full_name TEXT NOT NULL,
+    contact TEXT NOT NULL UNIQUE,
+    address TEXT NOT NULL,
+    sitio TEXT,
+    password_hash TEXT NOT NULL,
+    id_photo BLOB,
+    status TEXT NOT NULL DEFAULT 'pending',
+    verified_by TEXT,
+    verified_at TEXT,
+    updated_at TEXT,    
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS resident_sessions (
+    token_hash TEXT PRIMARY KEY,
+    resident_id INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+    CREATE TABLE IF NOT EXISTS password_resets (
+    token_hash TEXT PRIMARY KEY,
+    resident_id INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
 `;
 
 // reference numbers so residents can check their request
@@ -160,6 +191,25 @@ const REF_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const newRef = () => 'ZAP-' + Array.from(crypto.randomBytes(6), b => REF_CHARS[b % REF_CHARS.length]).join('');
 
 const EVIDENCE_TOPICS = ['Report a concern', 'Suggestion', 'Other'];
+
+// Residents must be signed in to send a message or book a visit.
+// Set to true if they must also be VERIFIED by the Hall first.
+const REQUIRE_VERIFIED = false;
+
+const residentGate = async (req, res) => {
+  const rr = await residentFromReq(req);
+  if (!rr) {
+    res.status(401).json({ error: 'Please sign in or register a resident account first.' });
+    return null;
+  }
+  if (REQUIRE_VERIFIED && rr.status !== 'verified') {
+    res.status(403).json({ error: rr.status === 'rejected'
+      ? 'Your registration was not verified. Please visit the Barangay Hall.'
+      : 'Your account is still waiting for verification by the Barangay Hall.' });
+    return null;
+  }
+  return rr;
+};
 
 const withPhotos = async rows => {
   if (!rows.length) return [];
@@ -185,18 +235,21 @@ const TOPICS = ['Request a document', 'Report a concern', 'Suggestion', 'Other']
 const STATUSES = ['new', 'in progress', 'resolved'];
 
 // ---------- Passwords and sessions ----------
-const hashPw = pw => {
+// scrypt runs in the background (async) so sign-ins do not freeze the site
+const scrypt = promisify(crypto.scrypt);
+const hashPw = async pw => {
   const salt = crypto.randomBytes(16);
-  return salt.toString('hex') + ':' + crypto.scryptSync(pw, salt, 64).toString('hex');
+  return salt.toString('hex') + ':' + (await scrypt(pw, salt, 64)).toString('hex');
 };
-const verifyPw = (pw, stored) => {
+const verifyPw = async (pw, stored) => {
   const [s, h] = String(stored).split(':');
   if (!s || !h) return false;
-  const calc = crypto.scryptSync(String(pw), Buffer.from(s, 'hex'), 64);
+  const calc = await scrypt(String(pw), Buffer.from(s, 'hex'), 64);
   const hb = Buffer.from(h, 'hex');
   return hb.length === calc.length && crypto.timingSafeEqual(calc, hb);
 };
 let DUMMY = null;
+const dummyHash = async () => (DUMMY ||= await hashPw('not-a-real-password'));
 const sha = t => crypto.createHash('sha256').update(t).digest('hex');
 const SESSION_MS = 8 * 60 * 60 * 1000;
 const secure = NODE_ENV === 'production' ? '; Secure' : '';
@@ -322,10 +375,24 @@ app.use(h(async (req, res, next) => {
 }));
 
 app.set('trust proxy', 1);
+
 // routes that can carry photos read their own larger body; everything else stays small
-const bigBody = req =>
-  (req.method === 'PATCH' && (req.path.startsWith('/api/admin/messages/') || req.path.startsWith('/api/staff/announcements/') || req.path.startsWith('/api/admin/officials/') || req.path === '/api/staff/profile')) ||
-  (req.method === 'POST' && (req.path === '/api/staff/announcements' || req.path === '/api/admin/officials' || req.path === '/api/messages'));
+const bigBody = req => {
+  if (req.method === 'PATCH') {
+    return req.path.startsWith('/api/admin/messages/')
+      || req.path.startsWith('/api/staff/announcements/')
+      || req.path.startsWith('/api/admin/officials/')
+      || req.path === '/api/staff/profile'
+      || req.path === '/api/resident/profile';
+  }
+  if (req.method === 'POST') {
+    return req.path === '/api/staff/announcements'
+      || req.path === '/api/admin/officials'
+      || req.path === '/api/messages'
+      || req.path === '/api/resident/register';
+  }
+  return false;
+};
 app.use((req, res, next) => (bigBody(req) || (req.method === 'PUT' && (req.path === '/api/admin/content' || req.path === '/api/admin/services'))) ? next() : express.json({ limit: '20kb' })(req, res, next));
 
 // ---------- Activity log: records every successful change made by staff ----------
@@ -341,6 +408,10 @@ const ACT_RULES = [
   ['DELETE', /^\/api\/admin\/officials\/\d+$/, () => 'Removed an official'],
   ['DELETE', /^\/api\/admin\/appointments\/\d+$/, () => 'Deleted an appointment'],
   ['POST', /^\/api\/admin\/users$/, b => 'Created account ' + (b.username || '')],
+  ['PATCH', /^\/api\/admin\/residents\/\d+$/, b => 'Set resident to ' + b.status],
+  ['PATCH', /^\/api\/admin\/residents\/\d+\/contact$/, () => 'Changed a resident contact'],
+  ['DELETE', /^\/api\/admin\/residents\/\d+$/, () => 'Deleted a resident account'],
+  ['POST', /^\/api\/admin\/residents\/\d+\/reset-password$/, () => 'Reset a resident password'],
   ['PATCH', /^\/api\/admin\/users\/\d+$/, b =>
     typeof b.password === 'string' ? 'Reset an account password'
       : typeof b.active === 'boolean' ? (b.active ? 'Enabled' : 'Disabled') + ' an account'
@@ -355,9 +426,12 @@ app.use((req, res, next) => {
   res.json = body => {
     const rule = ACT_RULES.find(r => r[0] === req.method && r[1].test(req.path));
     if (!rule || res.statusCode >= 400 || !req.user) return origJson(body);
-    run('INSERT INTO activity_log (user_id, user_name, action, detail) VALUES (?, ?, ?, ?)',
-      [req.user.id, req.user.full_name, rule[2](req.body || {}), res.locals.detail || ''])
-      .catch(() => {}).finally(() => origJson(body));
+    const p = run('INSERT INTO activity_log (user_id, user_name, action, detail) VALUES (?, ?, ?, ?)',
+      [req.user.id, req.user.full_name, rule[2](req.body || {}), res.locals.detail || '']).catch(() => {});
+    // if worker.js sets globalThis.__CTX = ctx, the log is saved in the background
+    const ctx = globalThis.__CTX;
+    if (ctx && ctx.waitUntil) { ctx.waitUntil(p); return origJson(body); }
+    p.finally(() => origJson(body)); // otherwise wait for it, so the log is never lost
     return res;
   };
   next();
@@ -415,6 +489,8 @@ app.get('/official-photos/:name', h(async (req, res) => {
 app.post('/api/messages', limit(5, 15), express.json({ limit: '9mb' }), h(async (req, res) => {
   const { name, contact, topic, message, website } = req.body || {};
   if (website) return res.json({ ok: true }); // honeypot
+  const rr = await residentGate(req, res);
+  if (!rr) return;
   const n = clean(name, 100), c = clean(contact, 120), m = clean(message, 2000);
   const t = TOPICS.includes(topic) ? topic : 'Other';
   if (n.length < 2) return res.status(400).json({ error: 'Please enter your full name.' });
@@ -438,7 +514,7 @@ app.post('/api/messages', limit(5, 15), express.json({ limit: '9mb' }), h(async 
     for (let i = 0; i < 5; i++) {
       ref = newRef();
       try {
-        const r = await run('INSERT INTO messages (name, contact, topic, message, ref) VALUES (?, ?, ?, ?, ?)', [n, c, t, m, ref], tx);
+        const r = await run('INSERT INTO messages (name, contact, topic, message, ref, resident_id) VALUES (?, ?, ?, ?, ?, ?)', [n, c, t, m, ref, rr.id], tx);
         id = Number(r.lastInsertRowid);
         break;
       } catch (e) { if (i === 4) throw e; }
@@ -504,7 +580,7 @@ app.get('/api/status/:ref/photo/:n', limit(120, 15), h(async (req, res) => {
 }));
 
 // ---------- Email updates (Brevo) ----------
-const extractEmail = s => (String(s).match(/[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+/) || [])[0] || null;
+const extractEmail = s => (String(s || '').match(/[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+/) || [])[0] || null;
 async function sendEmail(to, subject, text) {
   const key = process.env.BREVO_API_KEY, fromEmail = process.env.EMAIL_FROM_EMAIL;
   if (!to) return console.log('Email skipped: no email address');
@@ -527,8 +603,10 @@ async function sendEmail(to, subject, text) {
   } catch (e) { console.error('Email error', e.name, e.message); }
 }
 
+// emails go ONLY to the email of the signed-in resident account (m.acct),
+// never to an address typed into a form
 async function notifyStatus(m, status, note) {
-  const to = extractEmail(m.contact);
+  const to = extractEmail(m.acct);
   if (!to) return;
   const lines = {
     'new': 'We received your request and will review it.',
@@ -617,6 +695,8 @@ app.get('/api/appointments/slots', limit(60, 15), h(async (req, res) => {
 app.post('/api/appointments', limit(5, 15), h(async (req, res) => {
   const { name, contact, purpose, date, slot, website } = req.body || {};
   if (website) return res.json({ ok: true }); // honeypot
+  const rr = await residentGate(req, res);
+  if (!rr) return;
   const n = clean(name, 100), c = clean(contact, 120), p = clean(purpose, 200), d = clean(date, 10), s = clean(slot, 5);
   const sch = await getSchedule();
   if (n.length < 2) return res.status(400).json({ error: 'Please enter your full name.' });
@@ -631,13 +711,14 @@ app.post('/api/appointments', limit(5, 15), h(async (req, res) => {
     ref = newApptRef();
     try {
       const r = await run(
-        "INSERT INTO appointments (ref, name, contact, purpose, date, slot) SELECT ?, ?, ?, ?, ?, ? WHERE (SELECT COUNT(*) FROM appointments WHERE date = ? AND slot = ? AND status <> 'cancelled') < ?",
-        [ref, n, c, p, d, s, d, s, SLOT_CAP]);
+        "INSERT INTO appointments (ref, name, contact, purpose, date, slot, resident_id) SELECT ?, ?, ?, ?, ?, ?, ? WHERE (SELECT COUNT(*) FROM appointments WHERE date = ? AND slot = ? AND status <> 'cancelled') < ?",
+        [ref, n, c, p, d, s, rr.id, d, s, SLOT_CAP]);
       if (!r.rowsAffected) return res.status(409).json({ error: 'That time was just taken. Please choose another.' });
       saved = true;
     } catch (e) { if (i === 4) throw e; }
   }
-  await sendEmail(extractEmail(c), 'Your Barangay Hall visit ' + ref,
+  // confirmation goes to the registered account email only
+  await sendEmail(extractEmail(rr.contact), 'Your Barangay Hall visit ' + ref,
     `Good day ${n},\n\nYour visit is booked.\nReference: ${ref}\nDate: ${d}\nTime: ${slotLabel(s)}\nPurpose: ${p}\n\nPlease bring a valid ID and arrive a few minutes early.\n\nBarangay Zapatera`);
   res.status(201).json({ ok: true, ref });
 }));
@@ -853,14 +934,52 @@ app.post('/api/chat', limit(20, 10), h(async (req, res) => {
   res.json({ reply: reply || 'Sorry, I could not answer that. Please contact the Barangay Hall.', suggestions });
 }));
 
+// ---------- Staff passcode gate ----------
+// The passcode is now checked when staff sign in, and remembered on that device for 7 days.
+const STAFF_GATE_CODE = process.env.STAFF_GATE_CODE;
+const GATE_MS = 7 * 24 * 60 * 60 * 1000;
+const gateSig = exp => crypto.createHmac('sha256', STAFF_GATE_CODE).update('gate:' + exp).digest('hex');
+const gateCodeOk = code => {
+  const a = Buffer.from(sha(String(code ?? '')), 'hex'), b = Buffer.from(sha(STAFF_GATE_CODE), 'hex');
+  return crypto.timingSafeEqual(a, b);
+};
+const gateOk = req => {
+  if (!STAFF_GATE_CODE) return true; // no passcode configured: login works as before
+  const [exp, sig] = getCookie(req, 'sg').split('.');
+  if (!exp || !sig || Number(exp) < Date.now()) return false;
+  const a = Buffer.from(sig, 'hex'), b = Buffer.from(gateSig(exp), 'hex');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
+const setGateCookie = res => {
+  const exp = Date.now() + GATE_MS;
+  res.append('Set-Cookie', `sg=${exp}.${gateSig(exp)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${GATE_MS / 1000}${secure}`);
+};
+
+app.post('/api/staff-gate', limit(5, 15), h(async (req, res) => {
+  if (!STAFF_GATE_CODE) return res.status(503).json({ error: 'Staff access is not set up.' });
+  if (!gateCodeOk(req.body?.code)) return res.status(401).json({ error: 'Wrong passcode.' });
+  setGateCookie(res);
+  res.json({ ok: true });
+}));
+
 // ---------- Sign in / out ----------
 app.post('/api/auth/login', limit(30, 15), h(async (req, res) => {
   const username = clean(req.body?.username, 30).toLowerCase();
   const password = String(req.body?.password ?? '');
   const u = await get(`SELECT ${USER_COLS}, password_hash FROM users WHERE username = ?`, [username]);
-  const good = verifyPw(password, u ? u.password_hash : (DUMMY ||= hashPw('not-a-real-password')));
+  const good = await verifyPw(password, u ? u.password_hash : await dummyHash());
   if (!u || !good || !u.active) return res.status(401).json({ error: 'Wrong username or password.' });
+
+  // passcode is asked only after the username and password are correct
+  let freshGate = false;
+  if (!gateOk(req)) {
+    if (!req.body?.passcode || !gateCodeOk(req.body.passcode)) {
+      return res.status(403).json({ error: 'Enter the staff passcode to sign in.', gate: true });
+    }
+    freshGate = true;
+  }
   await startSession(res, u.id);
+  if (freshGate) setGateCookie(res);
   res.json({ user: me(u) });
 }));
 
@@ -873,24 +992,14 @@ app.post('/api/auth/logout', h(async (req, res) => {
 
 app.get('/api/auth/me', auth, (req, res) => res.json({ user: me(req.user) }));
 
-// ---------- Staff passcode gate ----------
-const STAFF_GATE_CODE = process.env.STAFF_GATE_CODE;
-app.post('/api/staff-gate', limit(5, 15), h(async (req, res) => {
-  if (!STAFF_GATE_CODE) return res.status(503).json({ error: 'Staff access is not set up.' });
-  const a = Buffer.from(sha(String(req.body?.code ?? '')), 'hex');
-  const b = Buffer.from(sha(STAFF_GATE_CODE), 'hex');
-  if (!crypto.timingSafeEqual(a, b)) return res.status(401).json({ error: 'Wrong passcode.' });
-  res.json({ ok: true });
-}));
-
 app.post('/api/auth/change-password', auth, limit(10, 15), h(async (req, res) => {
   const current = String(req.body?.current ?? ''), next = String(req.body?.next ?? '');
   const row = await get('SELECT password_hash FROM users WHERE id = ?', [req.user.id]);
-  if (!verifyPw(current, row.password_hash)) return res.status(400).json({ error: 'Current password is wrong.' });
+  if (!(await verifyPw(current, row.password_hash))) return res.status(400).json({ error: 'Current password is wrong.' });
   if (next.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters.' });
   if (next === current) return res.status(400).json({ error: 'New password must be different.' });
   await client.batch([
-    { sql: 'UPDATE users SET password_hash = ?, must_change = 0 WHERE id = ?', args: [hashPw(next), req.user.id] },
+    { sql: 'UPDATE users SET password_hash = ?, must_change = 0 WHERE id = ?', args: [await hashPw(next), req.user.id] },
     { sql: 'DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?', args: [req.user.id, req.sid] }
   ], 'write');
   res.json({ ok: true });
@@ -933,17 +1042,22 @@ app.get('/api/admin/messages-poll', auth, ready, can('admin', 'staff'), h(async 
   const n = (await get("SELECT COUNT(*) AS n FROM messages WHERE status = 'new'")).n;
   const ap = await get('SELECT id, name, date, slot FROM appointments ORDER BY id DESC LIMIT 1');
   const an = (await get("SELECT COUNT(*) AS n FROM appointments WHERE status = 'booked' AND date >= ?", [manilaToday()])).n;
+  const rs = await get("SELECT full_name, sitio, address, COALESCE(updated_at, created_at) AS changed_at, CASE WHEN updated_at IS NULL OR updated_at = created_at THEN 'new' ELSE 'edit' END AS kind FROM residents ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT 1");
+  const rst = await get("SELECT COUNT(*) AS n, COALESCE(MAX(id), 0) AS maxid, COALESCE(MAX(updated_at), '') AS mu, COALESCE(MAX(verified_at), '') AS mv, SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS p FROM residents");
   res.set('Cache-Control', 'no-store');
   res.json({
     latest: last ? last.id : 0, name: last ? last.name : '', topic: last ? last.topic : '', new: Number(n),
     appt_latest: ap ? ap.id : 0, appt_name: ap ? ap.name : '', appt_date: ap ? ap.date : '', appt_slot: ap ? ap.slot : '',
-    appt_new: Number(an)
+    appt_new: Number(an),
+    res_at: rs ? rs.changed_at : '', res_name: rs ? rs.full_name : '', res_kind: rs ? rs.kind : '',
+    res_info: rs ? [rs.sitio ? 'Sitio ' + rs.sitio : '', rs.address].filter(Boolean).join(', ') : '',
+    res_pending: Number(rst.p || 0),
+    res_stamp: [rst.n, rst.maxid, rst.mu, rst.mv, rst.p].join('|')
   });
 }));
-
 // ---------- Messages (admin and kagawad) ----------
 app.get('/api/admin/messages', auth, ready, can('admin', 'staff'), h(async (req, res) => {
-  const rows = await all('SELECT * FROM messages ORDER BY id DESC LIMIT 500');
+  const rows = await all('SELECT m.*, r.status AS resident_status FROM messages m LEFT JOIN residents r ON r.id = m.resident_id ORDER BY m.id DESC LIMIT 500');
   let ev = [];
   if (rows.length) {
     const ids = rows.map(r => r.id);
@@ -963,7 +1077,8 @@ app.patch('/api/admin/messages/:id', auth, ready, can('admin', 'staff'), express
   const id = idParam(req);
   const status = req.body?.status;
   if (!STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status' });
-  const msgRow = await get('SELECT ref, contact, topic FROM messages WHERE id = ?', [id]);
+  // m.acct = email/number of the resident account that sent the message
+  const msgRow = await get('SELECT m.ref, m.contact, m.topic, r.contact AS acct FROM messages m LEFT JOIN residents r ON r.id = m.resident_id WHERE m.id = ?', [id]);
   if (!msgRow) return res.status(404).json({ error: 'Message not found.' });
   res.locals.detail = msgRow.ref;
   const note = clean(req.body?.note, 500);
@@ -983,13 +1098,14 @@ app.patch('/api/admin/messages/:id', auth, ready, can('admin', 'staff'), express
     const logId = Number(info.lastInsertRowid);
     for (const buf of ph.bufs) await run('INSERT INTO proof_photos (log_id, data) VALUES (?, ?)', [logId, buf], tx);
     await tx.commit();
-    await notifyStatus(msgRow, status, note);
   } catch (e) {
     await tx.rollback().catch(() => {});
     throw e;
   } finally {
     tx.close();
   }
+  // the update is already saved; an email problem must not turn it into an error
+  try { await notifyStatus(msgRow, status, note); } catch (e) { console.error('Notify failed', e.message); }
   res.json({ ok: true });
 }));
 
@@ -1026,8 +1142,9 @@ app.get('/api/admin/activity', auth, ready, can('admin'), h(async (req, res) => 
   res.json(await all('SELECT id, user_name, action, detail, created_at FROM activity_log ORDER BY id DESC LIMIT 200'));
 }));
 
+// shows the last 90 days plus everything upcoming
 app.get('/api/admin/appointments', auth, ready, can('admin', 'staff'), h(async (req, res) => {
-  res.json(await all('SELECT id, ref, name, contact, purpose, date, slot, status, created_at FROM appointments ORDER BY date DESC, slot ASC LIMIT 200'));
+  res.json(await all('SELECT id, ref, name, contact, purpose, date, slot, status, created_at FROM appointments WHERE date >= ? ORDER BY date DESC, slot ASC LIMIT 2000', [addDays(manilaToday(), -90)]));
 }));
 
 app.get('/api/admin/appointments/overview', auth, ready, can('admin', 'staff'), h(async (req, res) => {
@@ -1045,12 +1162,12 @@ app.get('/api/admin/appointments/overview', auth, ready, can('admin', 'staff'), 
 app.patch('/api/admin/appointments/:id', auth, ready, can('admin', 'staff'), h(async (req, res) => {
   const id = idParam(req), status = req.body?.status;
   if (!['booked', 'done', 'cancelled'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
-  const a = await get('SELECT ref, contact, date, slot, status FROM appointments WHERE id = ?', [id]);
+  const a = await get('SELECT a.ref, a.contact, a.date, a.slot, a.status, r.contact AS acct FROM appointments a LEFT JOIN residents r ON r.id = a.resident_id WHERE a.id = ?', [id]);
   if (!a) return res.status(404).json({ error: 'Appointment not found.' });
   await run('UPDATE appointments SET status = ? WHERE id = ?', [status, id]);
   res.locals.detail = a.ref;
   if (status === 'cancelled' && a.status !== 'cancelled') {
-    await sendEmail(extractEmail(a.contact), 'Your Barangay Hall visit ' + a.ref + ' was cancelled',
+    await sendEmail(extractEmail(a.acct), 'Your Barangay Hall visit ' + a.ref + ' was cancelled',
       `Good day,\n\nYour visit ${a.ref} on ${a.date} at ${slotLabel(a.slot)} was cancelled by the Barangay Hall. You may book another time on our website.\n\nBarangay Zapatera`);
   }
   res.json({ ok: true });
@@ -1184,7 +1301,7 @@ app.delete('/api/admin/officials/:id', auth, ready, can('admin'), h(async (req, 
 
 // ---------- Accounts (admin only) ----------
 app.get('/api/admin/users', auth, ready, can('admin'), h(async (req, res) => {
-  res.json(await all('SELECT id, username, full_name, position, role, active, must_change, created_at, email, phone, updated_at, (avatar IS NOT NULL) AS has_avatar FROM users ORDER BY id'));
+  res.json(await all('SELECT id, username, full_name, position, role, active, must_change, created_at, email, phone, bio, updated_at, (avatar IS NOT NULL) AS has_avatar FROM users ORDER BY id'));
 }));
 
 app.post('/api/admin/users', auth, ready, can('admin'), h(async (req, res) => {
@@ -1198,7 +1315,7 @@ app.post('/api/admin/users', auth, ready, can('admin'), h(async (req, res) => {
   if (password.length < 8) return res.status(400).json({ error: 'Temporary password must be at least 8 characters.' });
   if (await get('SELECT 1 AS x FROM users WHERE username = ?', [username])) return res.status(409).json({ error: 'That username is taken.' });
   await run('INSERT INTO users (username, full_name, position, role, password_hash, must_change) VALUES (?, ?, ?, ?, ?, 1)',
-    [username, full_name, position, POSITIONS[position], hashPw(password)]);
+    [username, full_name, position, POSITIONS[position], await hashPw(password)]);
   res.status(201).json({ ok: true });
 }));
 
@@ -1227,7 +1344,7 @@ app.patch('/api/admin/users/:id', auth, ready, can('admin'), h(async (req, res) 
   if (typeof req.body?.password === 'string') {
     if (req.body.password.length < 8) return res.status(400).json({ error: 'Temporary password must be at least 8 characters.' });
     await client.batch([
-      { sql: 'UPDATE users SET password_hash = ?, must_change = 1 WHERE id = ?', args: [hashPw(req.body.password), id] },
+      { sql: 'UPDATE users SET password_hash = ?, must_change = 1 WHERE id = ?', args: [await hashPw(req.body.password), id] },
       { sql: 'DELETE FROM sessions WHERE user_id = ?', args: [id] }
     ], 'write');
     return res.json({ ok: true });
@@ -1390,6 +1507,251 @@ app.put('/api/admin/services', auth, ready, can('admin'), express.json({ limit: 
   res.json({ ok: true });
 }));
 
+// ---------- Residents (register, sign in, edit profile, verify) ----------
+const RES_MS = 30 * 24 * 60 * 60 * 1000;
+const SITIOS = ['Caimito', 'Mangga', 'Nangka', 'Creekside', 'Bayabas'];
+const RES_STATUSES = ['pending', 'verified', 'rejected'];
+const resMe = r => ({ id: r.id, full_name: r.full_name, contact: r.contact, address: r.address, sitio: r.sitio || '', status: r.status });
+const residentFromReq = async req => {
+  const t = getCookie(req, 'rid');
+  if (!t) return null;
+  return (await get('SELECT r.id, r.full_name, r.contact, r.address, r.sitio, r.status FROM resident_sessions s JOIN residents r ON r.id = s.resident_id WHERE s.token_hash = ? AND s.expires_at > ?', [sha(t), Date.now()])) || null;
+};
+const startResident = async (res, id) => {
+  const token = crypto.randomBytes(32).toString('hex');
+  await run('INSERT INTO resident_sessions (token_hash, resident_id, expires_at) VALUES (?, ?, ?)', [sha(token), id, Date.now() + RES_MS]);
+  res.setHeader('Set-Cookie', `rid=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${RES_MS / 1000}${secure}`);
+};
+const normContact = v => {
+  const raw = clean(v, 120).toLowerCase().replace(/\s+/g, '');
+  return EMAIL_RE.test(raw) ? raw : raw.replace(/[^\d+]/g, '');
+};
+const validContact = c => EMAIL_RE.test(c) || /^\+?\d{7,15}$/.test(c);
+
+// one place that tells the website whether verification is required
+app.get('/api/resident/config', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ requireVerified: REQUIRE_VERIFIED });
+});
+
+app.post('/api/resident/register', limit(5, 30), express.json({ limit: '3mb' }), h(async (req, res) => {
+  if (req.body?.website) return res.json({ ok: true }); // honeypot
+  const full_name = clean(req.body?.full_name, 100);
+  const contact = normContact(req.body?.contact);
+  const address = clean(req.body?.address, 200);
+  const sitio = clean(req.body?.sitio, 40);
+  const password = String(req.body?.password ?? '');
+  if (full_name.length < 2) return res.status(400).json({ error: 'Enter your full name.' });
+  if (!validContact(contact)) return res.status(400).json({ error: 'Enter a valid mobile number or email.' });
+  if (!SITIOS.includes(sitio)) return res.status(400).json({ error: 'Please choose your sitio.' });
+  if (address.length < 2) return res.status(400).json({ error: 'Enter your house number or street.' });
+  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  let id_photo = null;
+  if (req.body?.id_photo) {
+    const ph = readPhotos([req.body.id_photo]);
+    if (ph.error) return res.status(400).json({ error: ph.error });
+    id_photo = ph.bufs[0];
+  }
+  if (await get('SELECT 1 AS x FROM residents WHERE contact = ?', [contact]))
+    return res.status(409).json({ error: 'That email is already registered. Please sign in.' });
+  const r = await run("INSERT INTO residents (full_name, contact, address, sitio, password_hash, id_photo, updated_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))",
+    [full_name, contact, address, sitio, await hashPw(password), id_photo]);
+  const id = Number(r.lastInsertRowid);
+  await startResident(res, id);
+  res.status(201).json({ resident: resMe({ id, full_name, contact, address, sitio, status: 'pending' }) });
+}));
+
+app.post('/api/resident/login', limit(10, 15), h(async (req, res) => {
+  const contact = normContact(req.body?.contact);
+  const password = String(req.body?.password ?? '');
+  const r = await get('SELECT id, full_name, contact, address, sitio, status, password_hash FROM residents WHERE contact = ?', [contact]);
+  const good = await verifyPw(password, r ? r.password_hash : await dummyHash());
+  if (!r || !good) return res.status(401).json({ error: 'Wrong email or password.' });
+  await startResident(res, r.id);
+  res.json({ resident: resMe(r) });
+}));
+
+app.post('/api/resident/logout', h(async (req, res) => {
+  const t = getCookie(req, 'rid');
+  if (t) await run('DELETE FROM resident_sessions WHERE token_hash = ?', [sha(t)]);
+  res.setHeader('Set-Cookie', 'rid=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
+  res.json({ ok: true });
+}));
+
+const residentAuth = h(async (req, res, next) => {
+  const r = await residentFromReq(req);
+  if (!r) return res.status(401).json({ error: 'Please sign in.' });
+  req.resident = r;
+  next();
+});
+
+app.get('/api/resident/me', h(async (req, res) => {
+  const r = await residentFromReq(req);
+  if (!r) return res.status(401).json({ error: 'Not signed in' });
+  res.set('Cache-Control', 'no-store');
+  res.json({ resident: resMe(r) });
+}));
+
+// resident edits own profile
+app.patch('/api/resident/profile', limit(20, 15), residentAuth, express.json({ limit: '3mb' }), h(async (req, res) => {
+  const cur = req.resident;
+  const full_name = clean(req.body?.full_name, 100);
+  const contact = cur.contact; // residents cannot change this; only an admin can
+  const address = clean(req.body?.address, 200);
+  const sitio = clean(req.body?.sitio, 40);
+  if (full_name.length < 2) return res.status(400).json({ error: 'Enter your full name.' });
+  if (!EMAIL_RE.test(contact)) return res.status(400).json({ error: 'Enter a valid email address.' });  
+  if (!SITIOS.includes(sitio)) return res.status(400).json({ error: 'Please choose your sitio.' });
+  if (address.length < 2) return res.status(400).json({ error: 'Enter your house number or street.' });
+  if (contact !== cur.contact && await get('SELECT 1 AS x FROM residents WHERE contact = ? AND id <> ?', [contact, cur.id]))
+    return res.status(409).json({ error: 'That number or email is already used by another account.' });
+
+  let photo = null;
+  if (req.body?.id_photo) {
+    const ph = readPhotos([req.body.id_photo]);
+    if (ph.error) return res.status(400).json({ error: ph.error });
+    photo = ph.bufs[0];
+  }
+
+  // changing identity details sends the account back to the Hall for checking
+  const changed = full_name !== cur.full_name || address !== cur.address || sitio !== (cur.sitio || '') || !!photo;
+  const reset = cur.status !== 'pending' && changed;
+
+  const anyChange = changed || contact !== cur.contact;
+  let sql = 'UPDATE residents SET full_name = ?, contact = ?, address = ?, sitio = ?';
+  if (anyChange) sql += ", updated_at = datetime('now')";
+  const args = [full_name, contact, address, sitio];
+  if (photo) { sql += ', id_photo = ?'; args.push(photo); }
+  if (reset) sql += ", status = 'pending', verified_by = NULL, verified_at = NULL";
+  sql += ' WHERE id = ?'; args.push(cur.id);
+  await run(sql, args);
+
+  const fresh = await get('SELECT id, full_name, contact, address, sitio, status FROM residents WHERE id = ?', [cur.id]);
+  res.json({ resident: resMe(fresh), reset });
+}));
+
+// resident changes own password
+app.post('/api/resident/change-password', limit(10, 15), residentAuth, h(async (req, res) => {
+  const current = String(req.body?.current ?? ''), next = String(req.body?.next ?? '');
+  const row = await get('SELECT password_hash FROM residents WHERE id = ?', [req.resident.id]);
+  if (!(await verifyPw(current, row.password_hash))) return res.status(400).json({ error: 'Current password is wrong.' });
+  if (next.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters.' });
+  if (next === current) return res.status(400).json({ error: 'New password must be different.' });
+  await client.batch([
+    { sql: 'UPDATE residents SET password_hash = ? WHERE id = ?', args: [await hashPw(next), req.resident.id] },
+    { sql: 'DELETE FROM resident_sessions WHERE resident_id = ? AND token_hash <> ?', args: [req.resident.id, sha(getCookie(req, 'rid'))] }
+  ], 'write');
+  res.json({ ok: true });
+}));
+
+// ---------- Forgot password by email ----------
+const RESET_MS = 30 * 60 * 1000; // link works for 30 minutes
+
+// resident asks for a reset link (the answer is always the same, so nobody can test which emails exist)
+app.post('/api/resident/forgot', limit(5, 15), h(async (req, res) => {
+  const email = normContact(req.body?.contact);
+  if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter the email address you registered with.' });
+
+  const work = (async () => {
+    const r = await get('SELECT id, full_name FROM residents WHERE contact = ?', [email]);
+    if (!r) { console.log('Forgot password: no resident with email', email); return; }
+    const token = crypto.randomBytes(32).toString('hex');
+    await client.batch([
+      { sql: 'DELETE FROM password_resets WHERE resident_id = ?', args: [r.id] },
+      { sql: 'INSERT INTO password_resets (token_hash, resident_id, expires_at) VALUES (?, ?, ?)', args: [sha(token), r.id, Date.now() + RESET_MS] }
+    ], 'write');
+    const base = String(process.env.SITE_URL || (req.protocol + '://' + req.get('host'))).replace(/\/+$/, '');
+    await sendEmail(email, 'Reset your Barangay Zapatera password',
+      `Good day ${r.full_name},\n\nWe received a request to reset your password.\n\nOpen this link to choose a new password (it works for 30 minutes):\n${base}/?reset=${token}\n\nIf you did not ask for this, ignore this email. Your password will stay the same.\n\nBarangay Zapatera`);
+  })().catch(e => console.error('Forgot password failed', e.message));
+
+  const ctx = globalThis.__CTX;
+  if (ctx && ctx.waitUntil) ctx.waitUntil(work); else await work;
+  res.json({ ok: true });
+}));
+
+// resident sets a new password with the link from the email
+app.post('/api/resident/reset', limit(10, 15), h(async (req, res) => {
+  const token = String(req.body?.token ?? '');
+  const password = String(req.body?.password ?? '');
+  if (!/^[a-f0-9]{64}$/.test(token)) return res.status(400).json({ error: 'This reset link is not valid. Please request a new one.' });
+  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  const row = await get('SELECT resident_id FROM password_resets WHERE token_hash = ? AND expires_at > ?', [sha(token), Date.now()]);
+  if (!row) return res.status(400).json({ error: 'This reset link has expired or was already used. Please request a new one.' });
+  await client.batch([
+    { sql: 'UPDATE residents SET password_hash = ? WHERE id = ?', args: [await hashPw(password), row.resident_id] },
+    { sql: 'DELETE FROM resident_sessions WHERE resident_id = ?', args: [row.resident_id] },
+    { sql: 'DELETE FROM password_resets WHERE resident_id = ?', args: [row.resident_id] }
+  ], 'write');
+  res.json({ ok: true });
+}));
+
+// staff side
+app.get('/api/admin/residents', auth, ready, can('admin', 'staff'), h(async (req, res) => {
+  const rows = await all('SELECT id, full_name, contact, address, sitio, status, verified_by, verified_at, created_at, (id_photo IS NOT NULL) AS has_id FROM residents ORDER BY id DESC LIMIT 500');
+  res.json(rows.map(r => ({ ...r, has_id: !!r.has_id })));
+}));
+
+app.get('/api/admin/residents/:id/id', auth, ready, can('admin', 'staff'), h(async (req, res) => {
+  const p = await get('SELECT id_photo FROM residents WHERE id = ?', [idParam(req)]);
+  if (!p || !p.id_photo) return res.status(404).end();
+  sendJpeg(res, p.id_photo, 'private, no-store');
+}));
+
+app.patch('/api/admin/residents/:id', auth, ready, can('admin', 'staff'), h(async (req, res) => {
+  const id = idParam(req), status = req.body?.status;
+  if (!RES_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+  const r = await get('SELECT full_name FROM residents WHERE id = ?', [id]);
+  if (!r) return res.status(404).json({ error: 'Resident not found.' });
+  const by = status === 'pending' ? null : req.user.full_name;
+  await run("UPDATE residents SET status = ?, verified_by = ?, verified_at = CASE WHEN ? IS NULL THEN NULL ELSE datetime('now') END WHERE id = ?", [status, by, by, id]);
+  res.locals.detail = r.full_name;
+  res.json({ ok: true });
+}));
+
+app.delete('/api/admin/residents/:id', auth, ready, can('admin'), h(async (req, res) => {
+  const id = idParam(req);
+  const r = await get('SELECT full_name FROM residents WHERE id = ?', [id]);
+  if (!r) return res.status(404).json({ error: 'Resident not found.' });
+  await client.batch([
+    { sql: 'DELETE FROM resident_sessions WHERE resident_id = ?', args: [id] },
+    { sql: 'UPDATE messages SET resident_id = NULL WHERE resident_id = ?', args: [id] },
+    { sql: 'UPDATE appointments SET resident_id = NULL WHERE resident_id = ?', args: [id] },
+    { sql: 'DELETE FROM residents WHERE id = ?', args: [id] }
+  ], 'write');
+  res.locals.detail = r.full_name;
+  res.json({ ok: true });
+}));
+
+// only an admin can change a resident's mobile number or email (after the resident asks the Hall)
+app.patch('/api/admin/residents/:id/contact', auth, ready, can('admin'), h(async (req, res) => {
+  const id = idParam(req);
+  const contact = normContact(req.body?.contact);
+  if (!EMAIL_RE.test(contact)) return res.status(400).json({ error: 'Enter a valid email address.' });
+    const r = await get('SELECT full_name FROM residents WHERE id = ?', [id]);
+  if (!r) return res.status(404).json({ error: 'Resident not found.' });
+  if (await get('SELECT 1 AS x FROM residents WHERE contact = ? AND id <> ?', [contact, id]))
+    return res.status(409).json({ error: 'That number or email is already used by another account.' });
+  await run('UPDATE residents SET contact = ? WHERE id = ?', [contact, id]);
+  res.locals.detail = r.full_name;
+  res.json({ ok: true });
+}));
+
+// staff reset a resident's forgotten password (give them a temporary one)
+app.post('/api/admin/residents/:id/reset-password', auth, ready, can('admin', 'staff'), h(async (req, res) => {
+  const id = idParam(req);
+  const pw = String(req.body?.password ?? '');
+  if (pw.length < 8) return res.status(400).json({ error: 'Temporary password must be at least 8 characters.' });
+  const r = await get('SELECT full_name FROM residents WHERE id = ?', [id]);
+  if (!r) return res.status(404).json({ error: 'Resident not found.' });
+  await client.batch([
+    { sql: 'UPDATE residents SET password_hash = ? WHERE id = ?', args: [await hashPw(pw), id] },
+    { sql: 'DELETE FROM resident_sessions WHERE resident_id = ?', args: [id] }
+  ], 'write');
+  res.locals.detail = r.full_name;
+  res.json({ ok: true });
+}));
+
 // ---------- Errors (always answer the site with JSON) ----------
 app.use((err, req, res, next) => {
   if (res.headersSent) return next(err);
@@ -1402,15 +1764,24 @@ app.use((err, req, res, next) => {
 // ---------- Start (runs once when the Worker wakes up) ----------
 async function boot() {
   await client.executeMultiple(SCHEMA);
+  // older databases: add columns that were created later
   const mcols = (await all('PRAGMA table_info(messages)')).map(c => c.name);
   if (!mcols.includes('assigned_id')) await run('ALTER TABLE messages ADD COLUMN assigned_id INTEGER');
   if (!mcols.includes('assigned_name')) await run('ALTER TABLE messages ADD COLUMN assigned_name TEXT');
+  if (!mcols.includes('resident_id')) await run('ALTER TABLE messages ADD COLUMN resident_id INTEGER');
+  const rcols = (await all('PRAGMA table_info(residents)')).map(c => c.name);
+  if (!rcols.includes('sitio')) await run('ALTER TABLE residents ADD COLUMN sitio TEXT');
+  if (!rcols.includes('updated_at')) await run('ALTER TABLE residents ADD COLUMN updated_at TEXT');
+  const acols = (await all('PRAGMA table_info(appointments)')).map(c => c.name);
+  if (!acols.includes('resident_id')) await run('ALTER TABLE appointments ADD COLUMN resident_id INTEGER');
+  await run('DELETE FROM resident_sessions WHERE expires_at < ?', [Date.now()]);
+  await run('DELETE FROM password_resets WHERE expires_at < ?', [Date.now()]);
   await run('DELETE FROM sessions WHERE expires_at < ?', [Date.now()]);
   const n = (await get('SELECT COUNT(*) AS n FROM users')).n;
   if (n === 0) {
     if (!ADMIN_PASSWORD) throw new Error('No accounts yet. Set ADMIN_PASSWORD to create the first admin.');
     await run('INSERT INTO users (username, full_name, position, role, password_hash, must_change) VALUES (?, ?, ?, ?, ?, 1)',
-      [ADMIN_USERNAME.toLowerCase(), 'Administrator', 'Administrator', 'admin', hashPw(ADMIN_PASSWORD)]);
+      [ADMIN_USERNAME.toLowerCase(), 'Administrator', 'Administrator', 'admin', await hashPw(ADMIN_PASSWORD)]);
   }
   // emergency admin reset: set RESET_ADMIN_PASSWORD in Cloudflare, visit the site once, then delete the variable
   const newPw = process.env.RESET_ADMIN_PASSWORD;
@@ -1421,7 +1792,7 @@ async function boot() {
       const adm = await get("SELECT id FROM users WHERE position = 'Administrator' ORDER BY id LIMIT 1");
       if (adm) {
         await client.batch([
-          { sql: 'UPDATE users SET password_hash = ?, must_change = 1, active = 1 WHERE id = ?', args: [hashPw(newPw), adm.id] },
+          { sql: 'UPDATE users SET password_hash = ?, must_change = 1, active = 1 WHERE id = ?', args: [await hashPw(newPw), adm.id] },
           { sql: 'DELETE FROM sessions WHERE user_id = ?', args: [adm.id] },
           { sql: "INSERT INTO site_content (name, value, updated_at, updated_by) VALUES ('reset_marker', ?, datetime('now'), 'recovery') ON CONFLICT(name) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at", args: [marker] }
         ], 'write');
