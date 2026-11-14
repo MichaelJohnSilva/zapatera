@@ -389,7 +389,8 @@ const bigBody = req => {
     return req.path === '/api/staff/announcements'
       || req.path === '/api/admin/officials'
       || req.path === '/api/messages'
-      || req.path === '/api/resident/register';
+      || req.path === '/api/resident/register'      
+      || req.path === '/api/resident/avatar';
   }
   return false;
 };
@@ -959,8 +960,28 @@ app.post('/api/staff-gate', limit(5, 15), h(async (req, res) => {
   if (!STAFF_GATE_CODE) return res.status(503).json({ error: 'Staff access is not set up.' });
   if (!gateCodeOk(req.body?.code)) return res.status(401).json({ error: 'Wrong passcode.' });
   setGateCookie(res);
+  setEntryCookie(res);
   res.json({ ok: true });
 }));
+
+// one-time entry ticket for the admin page (valid 2 minutes, used up on first check)
+const entrySig = exp => crypto.createHmac('sha256', STAFF_GATE_CODE).update('entry:' + exp).digest('hex');
+const setEntryCookie = res => {
+  const exp = Date.now() + 2 * 60 * 1000;
+  res.append('Set-Cookie', `se=${exp}.${entrySig(exp)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=120${secure}`);
+};
+
+app.get('/api/staff-gate/check', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!STAFF_GATE_CODE) return res.status(401).json({ ok: false });
+  const [exp, sig] = getCookie(req, 'se').split('.');
+  // the ticket is always cleared, so it only works once
+  res.append('Set-Cookie', `se=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secure}`);
+  if (!exp || !sig || Number(exp) < Date.now()) return res.status(401).json({ ok: false });
+  const a = Buffer.from(sig, 'hex'), b = Buffer.from(entrySig(exp), 'hex');
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return res.status(401).json({ ok: false });
+  res.json({ ok: true });
+});
 
 // ---------- Sign in / out ----------
 app.post('/api/auth/login', limit(30, 15), h(async (req, res) => {
@@ -1511,12 +1532,25 @@ app.put('/api/admin/services', auth, ready, can('admin'), express.json({ limit: 
 const RES_MS = 30 * 24 * 60 * 60 * 1000;
 const SITIOS = ['Caimito', 'Mangga', 'Nangka', 'Creekside', 'Bayabas'];
 const RES_STATUSES = ['pending', 'verified', 'rejected'];
-const resMe = r => ({ id: r.id, full_name: r.full_name, contact: r.contact, address: r.address, sitio: r.sitio || '', status: r.status });
+
+const RES_COLS = 'id, full_name, first_name, middle_name, last_name, contact, address, sitio, status, (avatar IS NOT NULL) AS has_avatar';
+const resMe = r => ({
+  id: r.id, full_name: r.full_name,
+  first_name: r.first_name || '', middle_name: r.middle_name || '', last_name: r.last_name || '',
+  contact: r.contact, address: r.address, sitio: r.sitio || '', status: r.status, has_avatar: !!r.has_avatar
+});
+const readName = body => {
+  const first = clean(body?.first_name, 50), middle = clean(body?.middle_name, 50), last = clean(body?.last_name, 50);
+  if (first.length < 2) return { error: 'Enter your first name.' };
+  if (last.length < 2) return { error: 'Enter your last name.' };
+  return { first, middle, last, full: [first, middle, last].filter(Boolean).join(' ') };
+};
 const residentFromReq = async req => {
   const t = getCookie(req, 'rid');
   if (!t) return null;
-  return (await get('SELECT r.id, r.full_name, r.contact, r.address, r.sitio, r.status FROM resident_sessions s JOIN residents r ON r.id = s.resident_id WHERE s.token_hash = ? AND s.expires_at > ?', [sha(t), Date.now()])) || null;
+  return (await get('SELECT r.id, r.full_name, r.first_name, r.middle_name, r.last_name, r.contact, r.address, r.sitio, r.status, (r.avatar IS NOT NULL) AS has_avatar FROM resident_sessions s JOIN residents r ON r.id = s.resident_id WHERE s.token_hash = ? AND s.expires_at > ?', [sha(t), Date.now()])) || null;
 };
+
 const startResident = async (res, id) => {
   const token = crypto.randomBytes(32).toString('hex');
   await run('INSERT INTO resident_sessions (token_hash, resident_id, expires_at) VALUES (?, ?, ?)', [sha(token), id, Date.now() + RES_MS]);
@@ -1536,12 +1570,13 @@ app.get('/api/resident/config', (req, res) => {
 
 app.post('/api/resident/register', limit(5, 30), express.json({ limit: '3mb' }), h(async (req, res) => {
   if (req.body?.website) return res.json({ ok: true }); // honeypot
-  const full_name = clean(req.body?.full_name, 100);
+  const nm = readName(req.body);
+  if (nm.error) return res.status(400).json({ error: nm.error });
+  const full_name = nm.full;
   const contact = normContact(req.body?.contact);
   const address = clean(req.body?.address, 200);
   const sitio = clean(req.body?.sitio, 40);
   const password = String(req.body?.password ?? '');
-  if (full_name.length < 2) return res.status(400).json({ error: 'Enter your full name.' });
   if (!validContact(contact)) return res.status(400).json({ error: 'Enter a valid mobile number or email.' });
   if (!SITIOS.includes(sitio)) return res.status(400).json({ error: 'Please choose your sitio.' });
   if (address.length < 2) return res.status(400).json({ error: 'Enter your house number or street.' });
@@ -1554,17 +1589,17 @@ app.post('/api/resident/register', limit(5, 30), express.json({ limit: '3mb' }),
   }
   if (await get('SELECT 1 AS x FROM residents WHERE contact = ?', [contact]))
     return res.status(409).json({ error: 'That email is already registered. Please sign in.' });
-  const r = await run("INSERT INTO residents (full_name, contact, address, sitio, password_hash, id_photo, updated_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))",
-    [full_name, contact, address, sitio, await hashPw(password), id_photo]);
+  const r = await run("INSERT INTO residents (full_name, first_name, middle_name, last_name, contact, address, sitio, password_hash, id_photo, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+    [full_name, nm.first, nm.middle, nm.last, contact, address, sitio, await hashPw(password), id_photo]);
   const id = Number(r.lastInsertRowid);
   await startResident(res, id);
-  res.status(201).json({ resident: resMe({ id, full_name, contact, address, sitio, status: 'pending' }) });
+  res.status(201).json({ resident: resMe({ id, full_name, first_name: nm.first, middle_name: nm.middle, last_name: nm.last, contact, address, sitio, status: 'pending', has_avatar: false }) });
 }));
 
 app.post('/api/resident/login', limit(10, 15), h(async (req, res) => {
   const contact = normContact(req.body?.contact);
   const password = String(req.body?.password ?? '');
-  const r = await get('SELECT id, full_name, contact, address, sitio, status, password_hash FROM residents WHERE contact = ?', [contact]);
+  const r = await get('SELECT id, full_name, first_name, middle_name, last_name, contact, address, sitio, status, (avatar IS NOT NULL) AS has_avatar, password_hash FROM residents WHERE contact = ?', [contact]);
   const good = await verifyPw(password, r ? r.password_hash : await dummyHash());
   if (!r || !good) return res.status(401).json({ error: 'Wrong email or password.' });
   await startResident(res, r.id);
@@ -1585,6 +1620,31 @@ const residentAuth = h(async (req, res, next) => {
   next();
 });
 
+// resident uploads or removes own profile picture
+app.post('/api/resident/avatar', limit(20, 15), residentAuth, express.json({ limit: '3mb' }), h(async (req, res) => {
+  if (req.body?.remove) {
+    await run("UPDATE residents SET avatar = NULL, updated_at = datetime('now') WHERE id = ?", [req.resident.id]);
+    return res.json({ ok: true });
+  }
+  const ph = readPhotos([req.body?.avatar]);
+  if (ph.error) return res.status(400).json({ error: 'Profile picture must be a JPEG image under 2 MB.' });
+  await run("UPDATE residents SET avatar = ?, updated_at = datetime('now') WHERE id = ?", [ph.bufs[0], req.resident.id]);
+  res.json({ ok: true });
+}));
+
+app.get('/api/resident/avatar', residentAuth, h(async (req, res) => {
+  const p = await get('SELECT avatar FROM residents WHERE id = ?', [req.resident.id]);
+  if (!p || !p.avatar) return res.status(404).end();
+  sendJpeg(res, p.avatar, 'private, no-store');
+}));
+
+// staff see a resident's profile picture
+app.get('/api/admin/residents/:id/avatar', auth, ready, can('admin', 'staff'), h(async (req, res) => {
+  const p = await get('SELECT avatar FROM residents WHERE id = ?', [idParam(req)]);
+  if (!p || !p.avatar) return res.status(404).end();
+  sendJpeg(res, p.avatar, 'private, no-store');
+}));
+
 app.get('/api/resident/me', h(async (req, res) => {
   const r = await residentFromReq(req);
   if (!r) return res.status(401).json({ error: 'Not signed in' });
@@ -1595,16 +1655,14 @@ app.get('/api/resident/me', h(async (req, res) => {
 // resident edits own profile
 app.patch('/api/resident/profile', limit(20, 15), residentAuth, express.json({ limit: '3mb' }), h(async (req, res) => {
   const cur = req.resident;
-  const full_name = clean(req.body?.full_name, 100);
-  const contact = cur.contact; // residents cannot change this; only an admin can
+  const nm = readName(req.body);
+  if (nm.error) return res.status(400).json({ error: nm.error });
+  const full_name = nm.full;
+  const contact = cur.contact; // only an admin can change this
   const address = clean(req.body?.address, 200);
   const sitio = clean(req.body?.sitio, 40);
-  if (full_name.length < 2) return res.status(400).json({ error: 'Enter your full name.' });
-  if (!EMAIL_RE.test(contact)) return res.status(400).json({ error: 'Enter a valid email address.' });  
   if (!SITIOS.includes(sitio)) return res.status(400).json({ error: 'Please choose your sitio.' });
   if (address.length < 2) return res.status(400).json({ error: 'Enter your house number or street.' });
-  if (contact !== cur.contact && await get('SELECT 1 AS x FROM residents WHERE contact = ? AND id <> ?', [contact, cur.id]))
-    return res.status(409).json({ error: 'That number or email is already used by another account.' });
 
   let photo = null;
   if (req.body?.id_photo) {
@@ -1613,20 +1671,18 @@ app.patch('/api/resident/profile', limit(20, 15), residentAuth, express.json({ l
     photo = ph.bufs[0];
   }
 
-  // changing identity details sends the account back to the Hall for checking
   const changed = full_name !== cur.full_name || address !== cur.address || sitio !== (cur.sitio || '') || !!photo;
   const reset = cur.status !== 'pending' && changed;
 
-  const anyChange = changed || contact !== cur.contact;
-  let sql = 'UPDATE residents SET full_name = ?, contact = ?, address = ?, sitio = ?';
-  if (anyChange) sql += ", updated_at = datetime('now')";
-  const args = [full_name, contact, address, sitio];
+  let sql = 'UPDATE residents SET full_name = ?, first_name = ?, middle_name = ?, last_name = ?, contact = ?, address = ?, sitio = ?';
+  if (changed) sql += ", updated_at = datetime('now')";
+  const args = [full_name, nm.first, nm.middle, nm.last, contact, address, sitio];
   if (photo) { sql += ', id_photo = ?'; args.push(photo); }
   if (reset) sql += ", status = 'pending', verified_by = NULL, verified_at = NULL";
   sql += ' WHERE id = ?'; args.push(cur.id);
   await run(sql, args);
 
-  const fresh = await get('SELECT id, full_name, contact, address, sitio, status FROM residents WHERE id = ?', [cur.id]);
+  const fresh = await get(`SELECT ${RES_COLS} FROM residents WHERE id = ?`, [cur.id]);
   res.json({ resident: resMe(fresh), reset });
 }));
 
@@ -1688,8 +1744,8 @@ app.post('/api/resident/reset', limit(10, 15), h(async (req, res) => {
 
 // staff side
 app.get('/api/admin/residents', auth, ready, can('admin', 'staff'), h(async (req, res) => {
-  const rows = await all('SELECT id, full_name, contact, address, sitio, status, verified_by, verified_at, created_at, (id_photo IS NOT NULL) AS has_id FROM residents ORDER BY id DESC LIMIT 500');
-  res.json(rows.map(r => ({ ...r, has_id: !!r.has_id })));
+  const rows = await all('SELECT id, full_name, first_name, middle_name, last_name, contact, address, sitio, status, verified_by, verified_at, created_at, updated_at, (id_photo IS NOT NULL) AS has_id, (avatar IS NOT NULL) AS has_avatar FROM residents ORDER BY id DESC LIMIT 500');
+  res.json(rows.map(r => ({ ...r, has_id: !!r.has_id, has_avatar: !!r.has_avatar })));
 }));
 
 app.get('/api/admin/residents/:id/id', auth, ready, can('admin', 'staff'), h(async (req, res) => {
@@ -1772,6 +1828,10 @@ async function boot() {
   const rcols = (await all('PRAGMA table_info(residents)')).map(c => c.name);
   if (!rcols.includes('sitio')) await run('ALTER TABLE residents ADD COLUMN sitio TEXT');
   if (!rcols.includes('updated_at')) await run('ALTER TABLE residents ADD COLUMN updated_at TEXT');
+  if (!rcols.includes('first_name')) await run('ALTER TABLE residents ADD COLUMN first_name TEXT');
+  if (!rcols.includes('middle_name')) await run('ALTER TABLE residents ADD COLUMN middle_name TEXT');
+  if (!rcols.includes('last_name')) await run('ALTER TABLE residents ADD COLUMN last_name TEXT');
+  if (!rcols.includes('avatar')) await run('ALTER TABLE residents ADD COLUMN avatar BLOB');
   const acols = (await all('PRAGMA table_info(appointments)')).map(c => c.name);
   if (!acols.includes('resident_id')) await run('ALTER TABLE appointments ADD COLUMN resident_id INTEGER');
   await run('DELETE FROM resident_sessions WHERE expires_at < ?', [Date.now()]);

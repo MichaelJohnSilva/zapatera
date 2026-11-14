@@ -588,6 +588,12 @@ body.menu #drawer{transform:none}
 .gate b{font:700 1.1rem var(--head)}
 .gate p{margin:0;color:var(--muted);font-size:.93rem}
 
+.pavbox{display:grid;justify-items:center;gap:10px;text-align:center}
+.pavimg{width:110px;height:110px;border-radius:50%;background:var(--tint);color:var(--link);display:grid;place-items:center;font:700 2rem var(--head);overflow:hidden;border:4px solid var(--surface);box-shadow:0 0 0 2px var(--line)}
+.pavimg img{width:100%;height:100%;object-fit:cover;display:block}
+.pavbox .pavrow{display:flex;gap:8px;width:100%}
+#pd .pavbox .btn{min-height:40px;font-size:.85rem;flex:1}
+
 </style>
 </head>
 <body>
@@ -1088,10 +1094,22 @@ body.menu #drawer{transform:none}
 
       <label style="position:absolute;left:-9999px" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
 
-      <label>Full name
+      <label>First name
         <span class="ifld">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
-          <input name="n" required maxlength="100" autocomplete="name" placeholder="Juan Dela Cruz">
+          <input name="fn" required maxlength="50" autocomplete="given-name" placeholder="Juan">
+        </span>
+      </label>
+      <label>Middle name <small>(optional)</small>
+        <span class="ifld">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+          <input name="mn" maxlength="50" autocomplete="additional-name" placeholder="Santos">
+        </span>
+      </label>
+      <label>Last name
+        <span class="ifld">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+          <input name="ln" required maxlength="50" autocomplete="family-name" placeholder="Dela Cruz">
         </span>
       </label>
 
@@ -1225,10 +1243,32 @@ body.menu #drawer{transform:none}
 
     <!-- PROFILE -->
     <form id="pf">
-      <label>Full name
+      <div class="pavbox">
+        <span class="pavimg" id="pdav"></span>
+        <div class="pavrow">
+          <button type="button" class="btn" id="pdavb">Choose photo</button>
+          <button type="button" class="btn" id="pdavx">Remove</button>
+        </div>
+        <input type="file" id="pdavf" accept="image/*" hidden>
+        <small>Add a clear photo of your face. Only Barangay Hall staff can see it.</small>
+      </div>
+
+      <label>First name
         <span class="ifld">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
-          <input name="n" required maxlength="100" autocomplete="name">
+          <input name="fn" required maxlength="50" autocomplete="given-name">
+        </span>
+      </label>
+      <label>Middle name <small>(optional)</small>
+        <span class="ifld">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+          <input name="mn" maxlength="50" autocomplete="additional-name">
+        </span>
+      </label>
+      <label>Last name
+        <span class="ifld">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+          <input name="ln" required maxlength="50" autocomplete="family-name">
         </span>
       </label>
 
@@ -2291,10 +2331,9 @@ body.menu #drawer{transform:none}
     if(fup.p.value!==fup.p2.value){err.textContent='The passwords do not match.';return}
     btn.disabled=true;
     try{
-      var f=fup.id.files[0],body={full_name:fup.n.value,contact:fup.c.value,address:fup.a.value,sitio:fup.s.value,password:fup.p.value,website:fup.website.value};
-      if(f)body.id_photo=await shrink(f);
+    var f=fup.id.files[0],body={first_name:fup.fn.value,middle_name:fup.mn.value,last_name:fup.ln.value,contact:fup.c.value,address:fup.a.value,sitio:fup.s.value,password:fup.p.value,website:fup.website.value};      if(f)body.id_photo=await shrink(f);
       var d=await post('/api/resident/register',body);
-      fup.reset();setMe(d.resident);rd.close();menu(true);
+      fup.reset();setMe(d.resident);rd.close();openPd();
     }catch(x){err.textContent=x.message}
     btn.disabled=false;
   });
@@ -2371,6 +2410,50 @@ body.menu #drawer{transform:none}
 
     /* ---- resident profile (edit information and password) ---- */
   var pd=$('pd'),pf=$('pf'),pw2=$('pwf2');
+    var avV=Date.now();
+  function nameParts(m){
+    if(m.first_name||m.last_name)return {f:m.first_name||'',m:m.middle_name||'',l:m.last_name||''};
+    var w=(m.full_name||'').trim().split(/\s+/);
+    return {f:w[0]||'',m:'',l:w.slice(1).join(' ')};
+  }
+  function paintAv(){
+    var a=$('pdav');a.replaceChildren();
+    if(me&&me.has_avatar){
+      var im=document.createElement('img');im.alt='My profile picture';im.src='/api/resident/avatar?v='+avV;a.append(im);
+    }else{
+      var p=nameParts(me||{});a.textContent=((p.f[0]||'')+(p.l[0]||'')).toUpperCase()||'?';
+    }
+    $('pdavx').style.display=(me&&me.has_avatar)?'':'none';
+  }
+  function square(file,size){
+    return new Promise(function(ok,no){
+      var img=new Image(),url=URL.createObjectURL(file);
+      img.onload=function(){
+        var s=Math.min(img.width,img.height),c=document.createElement('canvas');
+        c.width=c.height=size;
+        c.getContext('2d').drawImage(img,(img.width-s)/2,(img.height-s)/2,s,s,0,0,size,size);
+        URL.revokeObjectURL(url);ok(c.toDataURL('image/jpeg',0.85));
+      };
+      img.onerror=function(){no(new Error('That file is not a readable image.'))};
+      img.src=url;
+    });
+  }
+  $('pdavb').onclick=function(){$('pdavf').click()};
+  $('pdavf').addEventListener('change',async function(){
+    var f=$('pdavf').files[0];if(!f)return;
+    clearMsgs();
+    try{
+      await post('/api/resident/avatar',{avatar:await square(f,400)});
+      me.has_avatar=true;avV=Date.now();paintAv();
+      pf.querySelector('.rok').textContent='Your profile picture was saved.';
+    }catch(x){pf.querySelector('.rerr').textContent=x.message}
+    $('pdavf').value='';
+  });
+  $('pdavx').onclick=async function(){
+    clearMsgs();
+    try{await post('/api/resident/avatar',{remove:true});me.has_avatar=false;paintAv()}
+    catch(x){pf.querySelector('.rerr').textContent=x.message}
+  };
 
   function patchJson(u,b){
     return fetch(u,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(function(r){
@@ -2387,8 +2470,9 @@ body.menu #drawer{transform:none}
   function openPd(){
     if(!me)return;
     menu(false);
-    pf.n.value=me.full_name;pf.c.value=me.contact;pf.s.value=me.sitio||'';pf.a.value=me.address;
-    resetDrop();pw2.reset();pdTab('p');
+    var np=nameParts(me);pf.fn.value=np.f;pf.mn.value=np.m;pf.ln.value=np.l;
+    pf.c.value=me.contact;pf.s.value=me.sitio||'';pf.a.value=me.address;
+    resetDrop();pw2.reset();pdTab('p');paintAv();
     if(!pd.open)pd.showModal();
   }
   pd.querySelectorAll('.rtabs button').forEach(function(b){b.onclick=function(){pdTab(b.dataset.p)}});
@@ -2414,11 +2498,11 @@ body.menu #drawer{transform:none}
     e.preventDefault();
     var btn=pf.querySelector('button.red');clearMsgs();btn.disabled=true;
     try{
-      var body={full_name:pf.n.value,contact:pf.c.value,address:pf.a.value,sitio:pf.s.value};
+      var body={first_name:pf.fn.value,middle_name:pf.mn.value,last_name:pf.ln.value,contact:pf.c.value,address:pf.a.value,sitio:pf.s.value};
       var f=pf.idp.files[0];
       if(f)body.id_photo=await shrink(f);
       var d=await patchJson('/api/resident/profile',body);
-      setMe(d.resident);
+      setMe(d.resident);paintAv();
       resetDrop();
       pf.querySelector('.rok').textContent=d.reset
         ?'Saved. The Barangay Hall will verify your updated details again.'
